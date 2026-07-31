@@ -5,12 +5,33 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 
 logger = logging.getLogger(__name__)
 
-# Default MySQL configuration provided by user
+# Dedicated MySQL configuration for Aura Music Downloader
 DB_USER = os.getenv("DB_USER", "root")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "marte")
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = os.getenv("DB_PORT", "3306")
-DB_NAME = os.getenv("DB_NAME", "db_madera_poltand")
+DB_NAME = os.getenv("DB_NAME", "aura_music_db")
+
+def ensure_mysql_database(user, password, host, port, db_name):
+    try:
+        import pymysql
+        conn = pymysql.connect(
+            host=host,
+            user=user,
+            password=password,
+            port=int(port),
+            connect_timeout=5
+        )
+        with conn.cursor() as cursor:
+            cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;")
+        conn.commit()
+        conn.close()
+        logger.info(f"Ensured MySQL database '{db_name}' exists.")
+    except Exception as e:
+        logger.warning(f"Could not auto-create MySQL database '{db_name}': {e}")
+
+# Ensure dedicated database exists on MySQL server
+ensure_mysql_database(DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME)
 
 MYSQL_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 SQLITE_URL = "sqlite:///./aura_database.db"
@@ -28,9 +49,8 @@ try:
         pool_pre_ping=True,
         pool_recycle=3600
     )
-    # Test connection
     with engine.connect() as conn:
-        logger.info("Successfully connected to primary MySQL database!")
+        logger.info(f"Successfully connected to MySQL database '{DB_NAME}'!")
 except Exception as e:
     logger.warning(f"Could not connect to MySQL database ({e}). Falling back to local SQLite database.")
     DATABASE_URL = SQLITE_URL
