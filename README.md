@@ -34,15 +34,27 @@ AuraDowloader/
 ```powershell
 cd aura-backend
 
-# Instalar dependencias Python
-py -m pip install -r requirements.txt
+# Crear el entorno virtual
+py -m venv .venv
 
-# Crear el .env local (ya incluido con valores por defecto)
+# Activar el entorno virtual
+.venv\Scripts\activate
+
+# Instalar dependencias dentro del .venv
+pip install -r requirements.txt
+
+# El .env ya está configurado con valores locales (root/marte)
 # Asegúrate de que MySQL local esté corriendo en el puerto 3306
 
 # Iniciar backend (crea la DB automáticamente al arrancar)
-py -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+.venv\Scripts\uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
+
+> 💡 La próxima vez que abras la terminal en `aura-backend/`, solo necesitas activar el entorno y arrancar:
+> ```powershell
+> .venv\Scripts\activate
+> uvicorn app.main:app --reload
+> ```
 
 La API estará disponible en: `http://localhost:8000`
 Documentación Swagger: `http://localhost:8000/docs`
