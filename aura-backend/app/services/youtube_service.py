@@ -31,6 +31,13 @@ def search_youtube(query: str, limit: int = 15) -> list[dict]:
         "extract_flat": True,
         "default_search": f"ytsearch{limit}",
     }
+    
+    from app.core.config import load_settings
+    settings = load_settings()
+    cookies_path = Path(settings.cookies_file)
+    if cookies_path.exists():
+        ydl_opts["cookiefile"] = str(cookies_path)
+
     if ffmpeg_bin:
         ydl_opts["ffmpeg_location"] = os.path.dirname(ffmpeg_bin)
 
@@ -73,6 +80,13 @@ def search_youtube_albums(query: str, limit: int = 15) -> list[dict]:
         "no_warnings": True,
         "extract_flat": True,
     }
+    
+    from app.core.config import load_settings
+    settings = load_settings()
+    cookies_path = Path(settings.cookies_file)
+    if cookies_path.exists():
+        ydl_opts["cookiefile"] = str(cookies_path)
+
     if ffmpeg_bin:
         ydl_opts["ffmpeg_location"] = os.path.dirname(ffmpeg_bin)
 
@@ -115,6 +129,13 @@ def get_youtube_playlist_tracks(playlist_url_or_id: str) -> list[dict]:
         "no_warnings": True,
         "extract_flat": True,
     }
+    
+    from app.core.config import load_settings
+    settings = load_settings()
+    cookies_path = Path(settings.cookies_file)
+    if cookies_path.exists():
+        ydl_opts["cookiefile"] = str(cookies_path)
+
     if ffmpeg_bin:
         ydl_opts["ffmpeg_location"] = os.path.dirname(ffmpeg_bin)
 
