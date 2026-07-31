@@ -198,14 +198,9 @@ def download_youtube_track(video_url: str, output_dir: Path, preferred_quality: 
                 "preferredquality": "320" if preferred_quality == "320k" else "192",
             }
         ],
-        "quiet": True,
         "no_warnings": True,
         "retries": 10,
-        "fragment_retries": 10,
-        "http_headers": {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-            "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
-        }
+        "fragment_retries": 10
     }
     
     from app.core.config import load_settings
