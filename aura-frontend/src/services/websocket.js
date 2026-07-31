@@ -8,9 +8,17 @@ export class DownloadWebSocket {
 
   connect() {
     this.isClosedManually = false;
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.hostname || 'localhost';
-    const wsUrl = `${protocol}//${host}:8000/ws/downloads`;
+
+    let wsUrl;
+    if (import.meta.env.VITE_WS_BASE_URL) {
+      // Production: use env variable (supports both ws:// and wss://)
+      wsUrl = `${import.meta.env.VITE_WS_BASE_URL}/ws/downloads`;
+    } else {
+      // Development: auto-detect from current page host
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.hostname || 'localhost';
+      wsUrl = `${protocol}//${host}:8000/ws/downloads`;
+    }
 
     try {
       this.ws = new WebSocket(wsUrl);

@@ -1,6 +1,10 @@
 import axios from 'axios';
 
-const API_BASE = '/api';
+// In dev: Vite proxies /api -> localhost:8000, so we use relative /api
+// In production (VPS): VITE_API_BASE_URL=http://your-vps-ip:8000, so we use absolute URL
+const API_BASE = import.meta.env.VITE_API_BASE_URL
+  ? `${import.meta.env.VITE_API_BASE_URL}/api`
+  : '/api';
 
 export const api = {
   async search(query, engine = 'youtube') {

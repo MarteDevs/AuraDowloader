@@ -1,6 +1,12 @@
+import os
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
+from dotenv import load_dotenv
 from fastapi import FastAPI
+
+# Load .env from backend root as early as possible
+load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -40,9 +46,15 @@ app = FastAPI(
 )
 
 # Enable CORS for React frontend
+_frontend_url = os.getenv("FRONTEND_URL", "*")
+_cors_origins = [_frontend_url] if _frontend_url != "*" else ["*"]
+# Always allow localhost for development
+if "*" not in _cors_origins:
+    _cors_origins += ["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

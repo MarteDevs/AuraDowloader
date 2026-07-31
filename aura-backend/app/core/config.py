@@ -2,9 +2,17 @@ import os
 import json
 from pathlib import Path
 from pydantic import BaseModel
+from dotenv import load_dotenv
+
+# Load .env from backend root
+_env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+load_dotenv(dotenv_path=_env_path)
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-DOWNLOADS_DIR = BASE_DIR / "downloads"
+
+# Allow DOWNLOAD_DIR to be overridden via env variable (important for VPS)
+_env_download_dir = os.getenv("DOWNLOAD_DIR", "").strip()
+DOWNLOADS_DIR = Path(_env_download_dir) if _env_download_dir else BASE_DIR / "downloads"
 TEMP_DIR = BASE_DIR / "temp"
 SETTINGS_FILE = BASE_DIR / "settings.json"
 
