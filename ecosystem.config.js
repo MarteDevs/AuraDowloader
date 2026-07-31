@@ -4,7 +4,6 @@
 //
 // Uso:
 //   pm2 start ecosystem.config.js --env production
-//   pm2 start ecosystem.config.js --env development
 // =====================================================
 
 module.exports = {
@@ -13,9 +12,11 @@ module.exports = {
       // ─── Backend FastAPI ──────────────────────────
       name: 'aura-backend',
       cwd: './aura-backend',
-      interpreter: 'python3',
-      script: '-m',
-      args: 'uvicorn app.main:app --host 0.0.0.0 --port 9000 --workers 2',
+
+      // Apunta directamente al uvicorn del .venv (sin usar -m)
+      script: '.venv/bin/uvicorn',
+      args: 'app.main:app --host 0.0.0.0 --port 9000 --workers 2',
+      interpreter: 'none',
 
       // PRODUCCIÓN — VPS Contabo / DuckDNS
       env_production: {
@@ -27,11 +28,11 @@ module.exports = {
         DB_USER: 'aura_user',
         DB_PASSWORD: 'CAMBIA_ESTE_PASSWORD_SEGURO',
         DB_NAME: 'aura_music_db',
-        DOWNLOAD_DIR: '/var/www/aura-music/downloads',
+        DOWNLOAD_DIR: '/var/www/AuraDowloader/downloads',
         FRONTEND_URL: 'http://aura-downloader.duckdns.org:3000',
       },
 
-      // DESARROLLO — Windows local
+      // DESARROLLO — Windows local (usar .venv\Scripts\uvicorn.exe manualmente)
       env_development: {
         NODE_ENV: 'development',
         HOST: '127.0.0.1',
@@ -58,11 +59,13 @@ module.exports = {
     },
 
     {
-      // ─── Frontend (Build estático servido con serve) ──
+      // ─── Frontend estático con serve ──────────────
       name: 'aura-frontend',
       cwd: './aura-frontend',
+
+      // serve@14: la bandera correcta es -l <puerto>
       script: 'npx',
-      args: 'serve dist --listen tcp://0.0.0.0:3000 --single',
+      args: 'serve dist -l 3000 --single',
 
       env_production: {
         NODE_ENV: 'production',
