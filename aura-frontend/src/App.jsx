@@ -19,32 +19,44 @@ export default function App() {
   const [isQueueOpen, setIsQueueOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  // Health check polling
+  // Health check (check once on mount, then every 30s)
   useEffect(() => {
     const check = async () => {
       const online = await api.checkHealth();
       setIsOnline(online);
     };
     check();
-    const interval = setInterval(check, 8000);
+    const interval = setInterval(check, 30000);
     return () => clearInterval(interval);
   }, []);
 
-  // Queue polling
+  const fetchQueue = async () => {
+    try {
+      const data = await api.getQueue();
+      if (data && data.items) {
+        setQueue(data.items);
+      }
+    } catch {}
+  };
+
+  // Smart Queue polling: only poll while there are active/pending downloads
+  const hasActiveDownloads = queue.some(
+    (item) => item.status === 'queued' || item.status === 'downloading' || item.status === 'processing'
+  );
+
   useEffect(() => {
-    const fetchQueue = async () => {
-      try {
-        const data = await api.getQueue();
-        if (data && data.items) {
-          setQueue(data.items);
-        }
-      } catch {}
-    };
-
     fetchQueue();
-    const interval = setInterval(fetchQueue, 2500);
-    return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (!hasActiveDownloads) return;
+
+    const interval = setInterval(() => {
+      fetchQueue();
+    }, 2500);
+
+    return () => clearInterval(interval);
+  }, [hasActiveDownloads]);
 
   const handleSearch = async (query) => {
     setIsSearching(true);
@@ -64,6 +76,7 @@ export default function App() {
   const handleDownload = async (track, quality) => {
     try {
       await api.startDownload(track, quality);
+      fetchQueue();
       setIsQueueOpen(true);
     } catch (err) {
       alert('Error iniciando descarga: ' + err.message);
