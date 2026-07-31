@@ -6,3 +6,5 @@ requests>=2.31.0
 python-multipart>=0.0.6
 static-ffmpeg>=2.5
 pydantic>=2.0.0
+sqlalchemy>=2.0.0
+pymysql>=1.1.0

@@ -6,6 +6,7 @@ import { AlbumCard } from './components/AlbumCard';
 import { DownloadQueue } from './components/DownloadQueue';
 import { SettingsModal } from './components/SettingsModal';
 import { api } from './services/api';
+import { DownloadWebSocket } from './services/websocket';
 import { Sparkles, Music, Disc, ShieldCheck, Download, Radio } from 'lucide-react';
 
 export default function App() {
@@ -41,24 +42,28 @@ export default function App() {
     } catch {}
   };
 
-  // Smart Queue polling: only poll while there are active/pending downloads
-  const hasActiveDownloads = queue.some(
-    (item) => item.status === 'queued' || item.status === 'downloading' || item.status === 'processing'
-  );
-
+  // Real-time WebSocket connection for download events
   useEffect(() => {
     fetchQueue();
+
+    const wsClient = new DownloadWebSocket((event) => {
+      if (event && event.item) {
+        setQueue((prevQueue) => {
+          const index = prevQueue.findIndex((i) => i.id === event.item.id);
+          if (index !== -1) {
+            const updated = [...prevQueue];
+            updated[index] = event.item;
+            return updated;
+          } else {
+            return [event.item, ...prevQueue];
+          }
+        });
+      }
+    });
+
+    wsClient.connect();
+    return () => wsClient.close();
   }, []);
-
-  useEffect(() => {
-    if (!hasActiveDownloads) return;
-
-    const interval = setInterval(() => {
-      fetchQueue();
-    }, 2500);
-
-    return () => clearInterval(interval);
-  }, [hasActiveDownloads]);
 
   const handleSearch = async (query) => {
     setIsSearching(true);

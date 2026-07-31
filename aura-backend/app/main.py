@@ -6,9 +6,12 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import DOWNLOADS_DIR
 from app.core.ffmpeg_utils import ensure_ffmpeg
+from app.core.db import engine, Base
 from app.api.endpoints.search import router as search_router
 from app.api.endpoints.download import router as download_router
 from app.api.endpoints.settings import router as settings_router
+from app.api.endpoints.library import router as library_router
+from app.api.endpoints.websocket import router as websocket_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("aura_backend")
@@ -17,17 +20,26 @@ logger = logging.getLogger("aura_backend")
 async def lifespan(app: FastAPI):
     logger.info("Initializing Aura Music Downloader Backend...")
     ensure_ffmpeg()
+    
+    # Auto-create database tables on startup
+    try:
+        logger.info("Creating database tables if not exist...")
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database tables initialized successfully.")
+    except Exception as db_err:
+        logger.error(f"Error creating DB tables: {db_err}")
+
     yield
     logger.info("Shutting down Aura Music Downloader Backend...")
 
 app = FastAPI(
     title="Aura Music Downloader API",
-    version="1.0.0",
-    description="Client-server API for music search, high-quality audio extraction, ID3 tagging, and lossless FLAC downloads.",
+    version="2.0.0",
+    description="Client-server API for music search, high-quality audio extraction, ID3 tagging, WebSocket real-time updates, and database persistence.",
     lifespan=lifespan
 )
 
-# Enable CORS for React frontend (Vite default port 5173 or any origin during dev)
+# Enable CORS for React frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -36,17 +48,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
+# Include HTTP & WebSocket routers
 app.include_router(search_router, prefix="/api", tags=["Search"])
 app.include_router(download_router, prefix="/api", tags=["Download"])
 app.include_router(settings_router, prefix="/api", tags=["Settings"])
+app.include_router(library_router, prefix="/api", tags=["Library"])
+app.include_router(websocket_router, tags=["WebSocket"])
 
 # Serve downloads static directory
 app.mount("/downloads", StaticFiles(directory=DOWNLOADS_DIR), name="downloads")
 
 @app.get("/api/health")
 def health_check():
-    return {"status": "online", "app": "Aura Music Downloader", "version": "1.0.0"}
+    return {"status": "online", "app": "Aura Music Downloader", "version": "2.0.0"}
 
 if __name__ == "__main__":
     import uvicorn
