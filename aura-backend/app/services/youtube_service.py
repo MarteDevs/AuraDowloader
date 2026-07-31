@@ -72,43 +72,43 @@ def search_youtube_albums(query: str, limit: int = 15) -> list[dict]:
         "quiet": True,
         "no_warnings": True,
         "extract_flat": True,
-        "default_search": f"ytsearchplaylist{limit}",
     }
     if ffmpeg_bin:
         ydl_opts["ffmpeg_location"] = os.path.dirname(ffmpeg_bin)
 
     results = []
     try:
+        search_term = f"ytsearch{limit}:{query} full album"
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(f"ytsearchplaylist{limit}:{query} album", download=False)
+            info = ydl.extract_info(search_term, download=False)
             entries = info.get("entries", [])
             for item in entries:
                 if not item:
                     continue
-                playlist_id = item.get("id")
+                video_id = item.get("id")
                 title = item.get("title", "Unknown Album")
                 uploader = item.get("uploader") or item.get("channel") or "Unknown Artist"
-                entry_count = item.get("playlist_count") or len(item.get("entries", [])) or 0
-                thumbnail = item.get("thumbnail") or ""
+                entry_count = item.get("playlist_count") or 1
+                thumbnail = item.get("thumbnail") or f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
                 
                 results.append({
-                    "id": playlist_id,
+                    "id": video_id,
                     "title": title,
                     "artist": uploader,
                     "thumbnail": thumbnail,
                     "nb_tracks": entry_count,
                     "type": "album",
                     "engine": "youtube",
-                    "url": f"https://www.youtube.com/playlist?list={playlist_id}" if not playlist_id.startswith("http") else playlist_id
+                    "url": item.get("url") or f"https://www.youtube.com/watch?v={video_id}"
                 })
     except Exception as e:
-        logger.error(f"Error searching YouTube playlists for '{query}': {e}")
+        logger.error(f"Error searching YouTube albums for '{query}': {e}")
 
     return results
 
 def get_youtube_playlist_tracks(playlist_url_or_id: str) -> list[dict]:
     ffmpeg_bin = get_ffmpeg_path()
-    url = playlist_url_or_id if playlist_url_or_id.startswith("http") else f"https://www.youtube.com/playlist?list={playlist_url_or_id}"
+    url = playlist_url_or_id if playlist_url_or_id.startswith("http") else f"https://www.youtube.com/watch?v={playlist_url_or_id}"
     
     ydl_opts = {
         "quiet": True,
@@ -123,19 +123,35 @@ def get_youtube_playlist_tracks(playlist_url_or_id: str) -> list[dict]:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             entries = info.get("entries", [])
-            for i, item in enumerate(entries, start=1):
-                if not item:
-                    continue
-                video_id = item.get("id")
+            
+            if entries:
+                for i, item in enumerate(entries, start=1):
+                    if not item:
+                        continue
+                    video_id = item.get("id")
+                    tracks.append({
+                        "id": video_id,
+                        "title": item.get("title", f"Track {i}"),
+                        "artist": item.get("uploader") or item.get("channel") or info.get("uploader") or "Unknown Artist",
+                        "duration": format_duration(item.get("duration")),
+                        "duration_sec": item.get("duration") or 0,
+                        "thumbnail": item.get("thumbnail") or f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
+                        "url": f"https://www.youtube.com/watch?v={video_id}",
+                        "track_number": i,
+                        "engine": "youtube"
+                    })
+            else:
+                # Single video album
+                video_id = info.get("id") or playlist_url_or_id
                 tracks.append({
                     "id": video_id,
-                    "title": item.get("title", f"Track {i}"),
-                    "artist": item.get("uploader") or item.get("channel") or info.get("uploader") or "Unknown Artist",
-                    "duration": format_duration(item.get("duration")),
-                    "duration_sec": item.get("duration") or 0,
-                    "thumbnail": item.get("thumbnail") or f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
+                    "title": info.get("title", "Full Album"),
+                    "artist": info.get("uploader") or info.get("channel") or "Unknown Artist",
+                    "duration": format_duration(info.get("duration")),
+                    "duration_sec": info.get("duration") or 0,
+                    "thumbnail": info.get("thumbnail") or f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
                     "url": f"https://www.youtube.com/watch?v={video_id}",
-                    "track_number": i,
+                    "track_number": 1,
                     "engine": "youtube"
                 })
     except Exception as e:
