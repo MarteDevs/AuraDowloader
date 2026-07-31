@@ -164,7 +164,6 @@ def download_youtube_track(video_url: str, output_dir: Path, preferred_quality: 
     ffmpeg_bin = get_ffmpeg_path()
     
     preferred_ext = "mp3" if preferred_quality in ["320k", "standard"] else "flac"
-    
     out_tmpl = str(output_dir / "%(title)s.%(ext)s")
     
     ydl_opts = {
@@ -180,6 +179,17 @@ def download_youtube_track(video_url: str, output_dir: Path, preferred_quality: 
         ],
         "quiet": True,
         "no_warnings": True,
+        "retries": 10,
+        "fragment_retries": 10,
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["mweb", "android", "web"]
+            }
+        },
+        "http_headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+            "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+        }
     }
     
     if ffmpeg_bin:
@@ -188,19 +198,37 @@ def download_youtube_track(video_url: str, output_dir: Path, preferred_quality: 
     if progress_hook:
         ydl_opts["progress_hooks"] = [progress_hook]
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(video_url, download=True)
-        title = info.get("title", "downloaded_track")
-        artist = info.get("uploader") or info.get("channel") or "Unknown Artist"
-        thumbnail_url = info.get("thumbnail")
-        
-        expected_filename = ydl.prepare_filename(info)
-        base_path, _ = os.path.splitext(expected_filename)
-        final_file = Path(f"{base_path}.{preferred_ext}")
+    # Retry loop to handle occasional YouTube 403 Forbidden rate limits
+    max_attempts = 3
+    info = None
+    last_error = None
 
-        if not final_file.exists():
-            # Fallback search for created file in dir
-            files = list(output_dir.glob(f"*.{preferred_ext}"))
+    for attempt in range(1, max_attempts + 1):
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(video_url, download=True)
+                break
+        except Exception as e:
+            last_error = e
+            logger.warning(f"Download attempt {attempt}/{max_attempts} failed for {video_url}: {e}")
+            if attempt < max_attempts:
+                import time
+                time.sleep(1.5)
+
+    if not info:
+        raise RuntimeError(f"Download failed after {max_attempts} attempts: {last_error}")
+
+    title = info.get("title", "downloaded_track")
+    artist = info.get("uploader") or info.get("channel") or "Unknown Artist"
+    thumbnail_url = info.get("thumbnail")
+    
+    clean_t = clean_filename(title)
+    final_file = output_dir / f"{clean_t}.{preferred_ext}"
+
+    if not final_file.exists():
+        files = list(output_dir.glob(f"*.{preferred_ext}"))
+        if files:
+            final_file = max(files, key=os.path.getctime)
             if files:
                 final_file = max(files, key=os.path.getctime)
 
