@@ -192,6 +192,12 @@ def download_youtube_track(video_url: str, output_dir: Path, preferred_quality: 
         }
     }
     
+    from app.core.config import load_settings
+    settings = load_settings()
+    cookies_path = Path(settings.cookies_file)
+    if cookies_path.exists():
+        ydl_opts["cookiefile"] = str(cookies_path)
+    
     if ffmpeg_bin:
         ydl_opts["ffmpeg_location"] = os.path.dirname(ffmpeg_bin)
         
