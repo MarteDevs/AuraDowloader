@@ -11,13 +11,12 @@ export class DownloadWebSocket {
 
     let wsUrl;
     if (import.meta.env.VITE_WS_BASE_URL) {
-      // Production: use env variable (supports both ws:// and wss://)
       wsUrl = `${import.meta.env.VITE_WS_BASE_URL}/ws/downloads`;
     } else {
-      // Development: auto-detect from current page host
+      // Auto-detect protocol and host from current browser location
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const host = window.location.hostname || 'localhost';
-      wsUrl = `${protocol}//${host}:9000/ws/downloads`;
+      const host = window.location.host;
+      wsUrl = `${protocol}//${host}/ws/downloads`;
     }
 
     try {
