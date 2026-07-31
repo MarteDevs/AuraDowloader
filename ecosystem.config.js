@@ -17,7 +17,7 @@ module.exports = {
 
       // Apunta directamente al uvicorn del .venv
       script: '.venv/bin/uvicorn',
-      args: 'app.main:app --host 0.0.0.0 --port 9000 --workers 2',
+      args: 'app.main:app --host 0.0.0.0 --port 9000 --workers 1',
       interpreter: 'none',
 
       // PRODUCCIÓN — VPS Contabo / DuckDNS

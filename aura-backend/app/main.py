@@ -27,13 +27,17 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing Aura Music Downloader Backend...")
     ensure_ffmpeg()
     
-    # Auto-create database tables on startup
+    # Auto-create database tables on startup (checkfirst=True prevents "already exists" errors)
     try:
         logger.info("Creating database tables if not exist...")
-        Base.metadata.create_all(bind=engine)
+        Base.metadata.create_all(bind=engine, checkfirst=True)
         logger.info("Database tables initialized successfully.")
     except Exception as db_err:
-        logger.error(f"Error creating DB tables: {db_err}")
+        err_msg = str(db_err)
+        if "already exists" in err_msg:
+            logger.info("Database tables already exist — skipping creation.")
+        else:
+            logger.error(f"Error creating DB tables: {db_err}")
 
     yield
     logger.info("Shutting down Aura Music Downloader Backend...")
