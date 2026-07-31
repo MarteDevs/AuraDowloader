@@ -202,11 +202,6 @@ def download_youtube_track(video_url: str, output_dir: Path, preferred_quality: 
         "no_warnings": True,
         "retries": 10,
         "fragment_retries": 10,
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["mweb", "android", "web"]
-            }
-        },
         "http_headers": {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
             "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
@@ -217,7 +212,10 @@ def download_youtube_track(video_url: str, output_dir: Path, preferred_quality: 
     settings = load_settings()
     cookies_path = Path(settings.cookies_file)
     if cookies_path.exists():
+        logger.info(f"Using YouTube cookies from: {cookies_path}")
         ydl_opts["cookiefile"] = str(cookies_path)
+    else:
+        logger.warning(f"YouTube cookies file NOT FOUND at: {cookies_path}")
     
     if ffmpeg_bin:
         ydl_opts["ffmpeg_location"] = os.path.dirname(ffmpeg_bin)
@@ -225,26 +223,13 @@ def download_youtube_track(video_url: str, output_dir: Path, preferred_quality: 
     if progress_hook:
         ydl_opts["progress_hooks"] = [progress_hook]
 
-    # Retry loop with client rotation (android, ios, mweb, tv) to bypass VPS datacenter bot checks
     max_attempts = 3
     info = None
     last_error = None
 
-    clients_to_try = [
-        ["android", "ios"],
-        ["mweb", "tv"],
-        ["web_embedded", "android_music", "mweb"]
-    ]
-
     for attempt in range(1, max_attempts + 1):
         try:
-            current_opts = dict(ydl_opts)
-            current_opts["extractor_args"] = {
-                "youtube": {
-                    "player_client": clients_to_try[(attempt - 1) % len(clients_to_try)]
-                }
-            }
-            with yt_dlp.YoutubeDL(current_opts) as ydl:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(video_url, download=True)
                 break
         except Exception as e:
