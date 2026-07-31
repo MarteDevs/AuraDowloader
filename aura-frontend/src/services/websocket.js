@@ -17,7 +17,7 @@ export class DownloadWebSocket {
       // Development: auto-detect from current page host
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = window.location.hostname || 'localhost';
-      wsUrl = `${protocol}//${host}:8000/ws/downloads`;
+      wsUrl = `${protocol}//${host}:9000/ws/downloads`;
     }
 
     try {

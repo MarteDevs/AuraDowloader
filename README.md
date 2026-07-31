@@ -56,8 +56,8 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 > uvicorn app.main:app --reload
 > ```
 
-La API estará disponible en: `http://localhost:8000`  
-Documentación Swagger: `http://localhost:8000/docs`
+La API estará disponible en: `http://localhost:9000`  
+Documentación Swagger: `http://localhost:9000/docs`
 
 ### 2. Frontend
 
@@ -172,8 +172,8 @@ cd /var/www/AuraDowloader/aura-frontend
 npm install
 
 # Build de producción con las URLs del VPS
-VITE_API_BASE_URL=http://aura-downloader.duckdns.org:8000 \
-VITE_WS_BASE_URL=ws://aura-downloader.duckdns.org:8000 \
+VITE_API_BASE_URL=http://aura-downloader.duckdns.org:9000 \
+VITE_WS_BASE_URL=ws://aura-downloader.duckdns.org:9000 \
 npm run build
 
 cd ..
@@ -201,7 +201,7 @@ pm2 startup
 
 ```bash
 # Verificar backend
-curl http://localhost:8000/api/health
+curl http://localhost:9000/api/health
 
 # Ver logs en tiempo real
 pm2 logs aura-backend
@@ -210,8 +210,8 @@ pm2 logs aura-frontend
 
 La aplicación estará disponible en:
 - **Frontend:** `http://aura-downloader.duckdns.org:3000`
-- **Backend API:** `http://aura-downloader.duckdns.org:8000`
-- **API Docs:** `http://aura-downloader.duckdns.org:8000/docs`
+- **Backend API:** `http://aura-downloader.duckdns.org:9000`
+- **API Docs:** `http://aura-downloader.duckdns.org:9000/docs`
 
 ---
 

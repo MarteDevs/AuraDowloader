@@ -15,13 +15,13 @@ module.exports = {
       cwd: './aura-backend',
       interpreter: 'python3',
       script: '-m',
-      args: 'uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2',
+      args: 'uvicorn app.main:app --host 0.0.0.0 --port 9000 --workers 2',
 
       // PRODUCCIÓN — VPS Contabo / DuckDNS
       env_production: {
         NODE_ENV: 'production',
         HOST: '0.0.0.0',
-        PORT: '8000',
+        PORT: '9000',
         DB_HOST: 'localhost',
         DB_PORT: '3306',
         DB_USER: 'aura_user',
@@ -35,7 +35,7 @@ module.exports = {
       env_development: {
         NODE_ENV: 'development',
         HOST: '127.0.0.1',
-        PORT: '8000',
+        PORT: '9000',
         DB_HOST: 'localhost',
         DB_PORT: '3306',
         DB_USER: 'root',
