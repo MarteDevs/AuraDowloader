@@ -32,7 +32,7 @@ class DownloadItem(BaseModel):
     created_at: float
 
 class DownloadManager:
-    def __init__(self, max_concurrent: int = 3):
+    def __init__(self, max_concurrent: int = 2):
         self.queue: dict[str, DownloadItem] = {}
         self.executor = ThreadPoolExecutor(max_workers=max_concurrent)
 
@@ -117,6 +117,8 @@ class DownloadManager:
             return
 
         item.status = "downloading"
+        item.progress = 1.0
+        item.speed = "Buscando audio..."
         self._broadcast_event("download_progress", item)
 
         settings = load_settings()
@@ -148,6 +150,7 @@ class DownloadManager:
             elif d.get("status") == "finished":
                 item.status = "processing"
                 item.progress = 95.0
+                item.speed = "Etiquetando ID3..."
                 self._broadcast_event("download_progress", item)
 
         try:
@@ -159,7 +162,8 @@ class DownloadManager:
                     output_dir=out_dir,
                     arl_token=settings.arl_token,
                     preferred_quality=item.quality,
-                    progress_hook=progress_hook
+                    progress_hook=progress_hook,
+                    track_url=track_info.get("url", "")
                 )
             else:
                 video_url = track_info.get("url")

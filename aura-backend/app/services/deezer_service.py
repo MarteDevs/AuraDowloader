@@ -92,7 +92,7 @@ def get_deezer_album_tracks(album_id: str) -> list[dict]:
         logger.error(f"Error fetching Deezer album tracks: {e}")
     return tracks
 
-def download_deezer_track(track_id: str, track_title: str, artist_name: str, output_dir: Path, arl_token: str = "", preferred_quality: str = "flac", progress_hook=None) -> dict:
+def download_deezer_track(track_id: str, track_title: str, artist_name: str, output_dir: Path, arl_token: str = "", preferred_quality: str = "flac", progress_hook=None, track_url: str = "") -> dict:
     """
     Attempts to download lossless audio from Deezer if valid ARL token is provided.
     If ARL token is missing, invalid, or track fails, gracefully falls back to YouTube search & download.
@@ -100,17 +100,20 @@ def download_deezer_track(track_id: str, track_title: str, artist_name: str, out
     if arl_token and preferred_quality == "flac":
         try:
             logger.info(f"Attempting Deezer Lossless download for {track_title} by {artist_name}")
-            # Placeholder for pydeezer / custom crypto stream decryptor
-            # If Deezer download succeeds, return file path
+            # Placeholder for Deezer stream decryptor
         except Exception as e:
             logger.warning(f"Deezer Lossless download failed ({e}). Triggering automatic fallback to YouTube.")
 
+    # Direct URL fallback if track already has a YouTube link
+    if track_url and "youtube.com" in track_url:
+        return download_youtube_track(track_url, output_dir=output_dir, preferred_quality="320k", progress_hook=progress_hook)
+
     # Fallback: Search track on YouTube and download with highest quality
-    fallback_query = f"{artist_name} - {track_title} audio"
+    fallback_query = f"{artist_name} - {track_title}"
     yt_results = search_youtube(fallback_query, limit=1)
     
     if yt_results:
         yt_url = yt_results[0]["url"]
         return download_youtube_track(yt_url, output_dir=output_dir, preferred_quality="320k", progress_hook=progress_hook)
     else:
-        raise RuntimeError(f"Could not find fallback audio for {track_title}")
+        raise RuntimeError(f"Could not find audio source for {track_title}")
