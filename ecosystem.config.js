@@ -1,7 +1,10 @@
 // =====================================================
 // Aura Music Downloader — PM2 Ecosystem Config
-// Uso: pm2 start ecosystem.config.js
-//      pm2 start ecosystem.config.js --env production
+// VPS: aura-downloader.duckdns.org (5.189.171.171)
+//
+// Uso:
+//   pm2 start ecosystem.config.js --env production
+//   pm2 start ecosystem.config.js --env development
 // =====================================================
 
 module.exports = {
@@ -10,13 +13,11 @@ module.exports = {
       // ─── Backend FastAPI ──────────────────────────
       name: 'aura-backend',
       cwd: './aura-backend',
-
-      // En Windows se usa py; en Linux/VPS usa python3
       interpreter: 'python3',
       script: '-m',
       args: 'uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2',
 
-      // Variables de entorno para PRODUCCIÓN (VPS Contabo)
+      // PRODUCCIÓN — VPS Contabo / DuckDNS
       env_production: {
         NODE_ENV: 'production',
         HOST: '0.0.0.0',
@@ -27,10 +28,10 @@ module.exports = {
         DB_PASSWORD: 'CAMBIA_ESTE_PASSWORD_SEGURO',
         DB_NAME: 'aura_music_db',
         DOWNLOAD_DIR: '/var/www/aura-music/downloads',
-        FRONTEND_URL: 'https://tu-dominio.com',
+        FRONTEND_URL: 'http://aura-downloader.duckdns.org:3000',
       },
 
-      // Variables de entorno para DESARROLLO (Windows local)
+      // DESARROLLO — Windows local
       env_development: {
         NODE_ENV: 'development',
         HOST: '127.0.0.1',
@@ -44,14 +45,12 @@ module.exports = {
         FRONTEND_URL: 'http://localhost:5173',
       },
 
-      // Opciones de proceso
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
       watch: false,
       max_memory_restart: '500M',
 
-      // Logs
       out_file: './logs/backend-out.log',
       error_file: './logs/backend-error.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
@@ -59,7 +58,7 @@ module.exports = {
     },
 
     {
-      // ─── Frontend (Serve del build de producción) ──
+      // ─── Frontend (Build estático servido con serve) ──
       name: 'aura-frontend',
       cwd: './aura-frontend',
       script: 'npx',

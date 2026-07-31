@@ -1,116 +1,211 @@
 # 🎵 Aura Music Downloader
 
-Aura es una aplicación cliente-servidor diseñada para buscar, resolver y descargar música en la máxima calidad posible, priorizando formatos **Lossless (FLAC 16-bit/44.1kHz)** con etiquetado automático **ID3** (carátulas HD, artista, álbum, año) y un sistema de **fallback automático** a MP3 320kbps/160kbps a través del motor de YouTube.
+Descargador de música audiófila cliente-servidor. Soporta calidad **FLAC Lossless** (vía Deezer ARL) y **MP3 320kbps** (vía YouTube). Incluye búsqueda de artistas, álbumes, etiquetado automático ID3, progreso en tiempo real vía **WebSockets** e historial persistente en **MySQL**.
 
 ---
 
-## 🚀 Requisitos Previos
+## 🗺️ Estructura del Proyecto
 
-Antes de iniciar la aplicación, asegúrate de contar con:
-
-- **Python 3.10+** (probado y verificado en Windows usando el lanzador `py` o `python`).
-- **Node.js 18+** y **npm** (para la interfaz en React/Vite).
+```
+AuraDowloader/
+├── aura-backend/          # Backend FastAPI (Python)
+│   ├── app/
+│   │   ├── api/           # Endpoints REST y WebSocket
+│   │   ├── core/          # Config, DB, FFmpeg
+│   │   ├── models/        # Modelos SQLAlchemy
+│   │   └── services/      # YouTube, Deezer, Download Manager
+│   ├── .env               # Variables de entorno (NO en Git)
+│   ├── .env.example       # Plantilla de configuración
+│   └── requirements.txt
+├── aura-frontend/         # Frontend React + Vite + Tailwind
+│   ├── src/
+│   ├── .env               # Variables de entorno (NO en Git)
+│   ├── .env.example       # Plantilla de configuración
+│   └── package.json
+└── ecosystem.config.js    # PM2 — gestor de procesos producción
+```
 
 ---
 
-## 🛠️ Cómo Levantar la Aplicación
+## 💻 Desarrollo Local (Windows)
 
-La aplicación consta de dos partes: el **Backend (FastAPI)** y el **Frontend (React + Vite)**. Sigue los siguientes pasos para iniciar ambos componentes:
-
----
-
-### 1. Iniciar el Backend (Python / FastAPI)
-
-Abre una terminal en la raíz del proyecto y ejecuta:
+### 1. Backend
 
 ```powershell
-# 1. Navega a la carpeta del backend
 cd aura-backend
 
-# 2. Instala las dependencias (solo la primera vez)
+# Instalar dependencias Python
 py -m pip install -r requirements.txt
 
-# 3. Inicia el servidor del backend
+# Crear el .env local (ya incluido con valores por defecto)
+# Asegúrate de que MySQL local esté corriendo en el puerto 3306
+
+# Iniciar backend (crea la DB automáticamente al arrancar)
 py -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-- **URL de la API**: `http://localhost:8000`
-- **Documentación Interactiva (Swagger UI)**: `http://localhost:8000/docs`
+La API estará disponible en: `http://localhost:8000`
+Documentación Swagger: `http://localhost:8000/docs`
 
-> **Nota sobre FFmpeg**: El backend incluye el paquete `static-ffmpeg`, el cual descarga y configura automáticamente los binarios de `ffmpeg` sin requerir instalación manual previa en tu sistema.
-
----
-
-### 2. Iniciar el Frontend (React + Vite + Tailwind CSS)
-
-En **otra ventana de la terminal**, ejecuta:
+### 2. Frontend
 
 ```powershell
-# 1. Navega a la carpeta del frontend
 cd aura-frontend
 
-# 2. Instala las dependencias (solo la primera vez)
+# Instalar dependencias
 npm install
 
-# 3. Inicia el servidor de desarrollo
+# Iniciar servidor de desarrollo
 npm run dev
 ```
 
-- **URL de la Aplicación Web**: `http://localhost:5173`
-
-Abre tu navegador en `http://localhost:5173` para comenzar a utilizar Aura.
+La app estará disponible en: `http://localhost:5173`
 
 ---
 
-## ⚙️ Configuración y Descargas Lossless (FLAC)
+## 🚀 Despliegue en VPS Contabo
 
-### Habilitar Motor Deezer (FLAC 16-bit)
-1. Abre la aplicación en el navegador (`http://localhost:5173`).
-2. Haz clic en el icono de **Configuración ⚙️** ubicado en la esquina superior derecha del encabezado.
-3. En el campo **Token ARL de Deezer**, pega tu token ARL de tu cuenta de Deezer.
-4. Presiona **Guardar Ajustes**.
-5. ¡Listo! Ahora podrás realizar búsquedas en el motor Deezer y descargar canciones en calidad **FLAC Lossless**.
+**Dominio:** `aura-downloader.duckdns.org` | **IP:** `5.189.171.171`
 
-> **Sistema Fallback**: Si no cuentas con Token ARL o la canción no está disponible en FLAC, Aura cambiará automáticamente al motor de YouTube para entregarte la versión en MP3 a 320kbps con etiquetado ID3.
+### 1. Clonar el repositorio en el VPS
+
+```bash
+ssh root@5.189.171.171
+git clone <tu-repositorio> /var/www/aura-music
+cd /var/www/aura-music
+```
+
+### 2. Crear carpeta de descargas
+
+```bash
+mkdir -p /var/www/aura-music/downloads
+mkdir -p /var/www/aura-music/logs
+```
+
+### 3. Configurar el Backend (.env)
+
+```bash
+cp aura-backend/.env.example aura-backend/.env
+nano aura-backend/.env
+```
+
+Contenido del `.env` en el VPS:
+```env
+HOST=0.0.0.0
+PORT=8000
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=aura_user
+DB_PASSWORD=TU_PASSWORD_SEGURO
+DB_NAME=aura_music_db
+DOWNLOAD_DIR=/var/www/aura-music/downloads
+FRONTEND_URL=http://aura-downloader.duckdns.org:3000
+```
+
+### 4. Crear usuario y base de datos MySQL
+
+```sql
+-- Conectar como root a MySQL
+mysql -u root -p
+
+CREATE USER 'aura_user'@'localhost' IDENTIFIED BY 'TU_PASSWORD_SEGURO';
+GRANT ALL PRIVILEGES ON aura_music_db.* TO 'aura_user'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;
+```
+
+> El backend crea la base de datos `aura_music_db` automáticamente al arrancar.
+
+### 5. Instalar dependencias del Backend
+
+```bash
+pip3 install -r aura-backend/requirements.txt
+```
+
+### 6. Instalar dependencias y Build del Frontend
+
+```bash
+cd aura-frontend
+npm install
+
+# Build de producción con las URLs del VPS
+VITE_API_BASE_URL=http://aura-downloader.duckdns.org:8000 \
+VITE_WS_BASE_URL=ws://aura-downloader.duckdns.org:8000 \
+npm run build
+
+cd ..
+```
+
+### 7. Instalar PM2 y levantar la aplicación
+
+```bash
+# Instalar PM2 globalmente
+npm install -g pm2
+
+# Iniciar todos los servicios en modo producción
+pm2 start ecosystem.config.js --env production
+
+# Verificar que están corriendo
+pm2 status
+
+# Guardar la configuración para auto-arranque
+pm2 save
+pm2 startup
+```
+
+### 8. Verificar el despliegue
+
+```bash
+# Verificar backend
+curl http://localhost:8000/api/health
+
+# Ver logs en tiempo real
+pm2 logs aura-backend
+pm2 logs aura-frontend
+```
+
+La aplicación estará disponible en:
+- **Frontend:** `http://aura-downloader.duckdns.org:3000`
+- **Backend API:** `http://aura-downloader.duckdns.org:8000`
+- **API Docs:** `http://aura-downloader.duckdns.org:8000/docs`
 
 ---
 
-## 📁 Estructura del Proyecto
+## 🔧 Comandos PM2 Útiles
 
-```text
-AuroDowloader/
-├── aura-backend/            # Servidor FastAPI (Python)
-│   ├── app/
-│   │   ├── api/            # Endpoints (/search, /download, /settings)
-│   │   ├── core/           # Configuración y utilidades de FFmpeg
-│   │   ├── services/       # Motores YouTube, Deezer y cola asíncrona
-│   │   └── main.py         # Entrypoint del servidor
-│   ├── downloads/          # Carpeta de almacenamiento de audio
-│   └── requirements.txt    # Dependencias de Python
-│
-├── aura-frontend/           # Interfaz de Usuario (React + Vite)
-│   ├── src/
-│   │   ├── components/     # Header, SearchBar, SongCard, DownloadQueue, Settings
-│   │   ├── services/       # Cliente API Axios
-│   │   └── App.jsx         # Componente principal
-│   └── package.json
-│
-├── .gitignore               # Exclusión de node_modules, audios y temporales
-├── plan-aura.md             # Especificación técnica inicial
-└── README.md                # Guía de uso e instalación
+```bash
+pm2 status                    # Ver estado de todos los procesos
+pm2 logs                      # Ver todos los logs
+pm2 logs aura-backend         # Logs solo del backend
+pm2 restart aura-backend      # Reiniciar el backend
+pm2 restart all               # Reiniciar todos los procesos
+pm2 stop all                  # Detener todos los procesos
+pm2 delete all                # Eliminar todos los procesos de PM2
+pm2 monit                     # Monitor visual interactivo
 ```
 
 ---
 
-## 🧪 Comandos Útiles
+## 🔑 Configuración ARL Token (Deezer FLAC)
 
-- **Compilar el Frontend para Producción**:
-  ```bash
-  cd aura-frontend
-  npm run build
-  ```
-- **Verificar Sintaxis del Backend**:
-  ```bash
-  cd aura-backend
-  py -m py_compile app/main.py
-  ```
+Para descargas en calidad FLAC Lossless se requiere un token ARL de Deezer:
+
+1. Abre la app en el navegador → ⚙️ (Configuración)
+2. Pega tu token ARL de Deezer
+3. Selecciona calidad **FLAC** al descargar
+
+---
+
+## 📡 Endpoints Principales
+
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| `GET` | `/api/health` | Estado del servidor |
+| `GET` | `/api/search?q=...&engine=youtube` | Buscar canciones |
+| `GET` | `/api/search/albums?q=...` | Buscar álbumes |
+| `POST` | `/api/download` | Descargar canción |
+| `POST` | `/api/download/album` | Descargar álbum completo |
+| `GET` | `/api/download/queue` | Cola de descargas |
+| `GET` | `/api/library` | Historial de canciones descargadas |
+| `GET` | `/api/favorites` | Canciones marcadas como favoritas |
+| `WS` | `/ws/downloads` | WebSocket de progreso en tiempo real |
