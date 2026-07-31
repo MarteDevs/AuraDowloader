@@ -198,14 +198,26 @@ def download_youtube_track(video_url: str, output_dir: Path, preferred_quality: 
     if progress_hook:
         ydl_opts["progress_hooks"] = [progress_hook]
 
-    # Retry loop to handle occasional YouTube 403 Forbidden rate limits
+    # Retry loop with client rotation (android, ios, mweb, tv) to bypass VPS datacenter bot checks
     max_attempts = 3
     info = None
     last_error = None
 
+    clients_to_try = [
+        ["android", "ios"],
+        ["mweb", "tv"],
+        ["web_embedded", "android_music", "mweb"]
+    ]
+
     for attempt in range(1, max_attempts + 1):
         try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            current_opts = dict(ydl_opts)
+            current_opts["extractor_args"] = {
+                "youtube": {
+                    "player_client": clients_to_try[(attempt - 1) % len(clients_to_try)]
+                }
+            }
+            with yt_dlp.YoutubeDL(current_opts) as ydl:
                 info = ydl.extract_info(video_url, download=True)
                 break
         except Exception as e:
@@ -213,7 +225,7 @@ def download_youtube_track(video_url: str, output_dir: Path, preferred_quality: 
             logger.warning(f"Download attempt {attempt}/{max_attempts} failed for {video_url}: {e}")
             if attempt < max_attempts:
                 import time
-                time.sleep(1.5)
+                time.sleep(2.0)
 
     if not info:
         raise RuntimeError(f"Download failed after {max_attempts} attempts: {last_error}")
