@@ -37,7 +37,7 @@ cd aura-backend
 # Crear el entorno virtual
 py -m venv .venv
 
-# Activar el entorno virtual
+# Activar el entorno virtual (Windows)
 .venv\Scripts\activate
 
 # Instalar dependencias dentro del .venv
@@ -47,27 +47,23 @@ pip install -r requirements.txt
 # Asegúrate de que MySQL local esté corriendo en el puerto 3306
 
 # Iniciar backend (crea la DB automáticamente al arrancar)
-.venv\Scripts\uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-> 💡 La próxima vez que abras la terminal en `aura-backend/`, solo necesitas activar el entorno y arrancar:
+> 💡 La próxima vez solo activa el entorno y arranca:
 > ```powershell
 > .venv\Scripts\activate
 > uvicorn app.main:app --reload
 > ```
 
-La API estará disponible en: `http://localhost:8000`
+La API estará disponible en: `http://localhost:8000`  
 Documentación Swagger: `http://localhost:8000/docs`
 
 ### 2. Frontend
 
 ```powershell
 cd aura-frontend
-
-# Instalar dependencias
 npm install
-
-# Iniciar servidor de desarrollo
 npm run dev
 ```
 
@@ -75,7 +71,7 @@ La app estará disponible en: `http://localhost:5173`
 
 ---
 
-## 🚀 Despliegue en VPS Contabo
+## 🚀 Despliegue en VPS Contabo (Linux)
 
 **Dominio:** `aura-downloader.duckdns.org` | **IP:** `5.189.171.171`
 
@@ -83,15 +79,15 @@ La app estará disponible en: `http://localhost:5173`
 
 ```bash
 ssh root@5.189.171.171
-git clone <tu-repositorio> /var/www/aura-music
-cd /var/www/aura-music
+git clone <tu-repositorio> /var/www/AuraDowloader
+cd /var/www/AuraDowloader
 ```
 
-### 2. Crear carpeta de descargas
+### 2. Crear carpetas necesarias
 
 ```bash
-mkdir -p /var/www/aura-music/downloads
-mkdir -p /var/www/aura-music/logs
+mkdir -p /var/www/AuraDowloader/downloads
+mkdir -p /var/www/AuraDowloader/logs
 ```
 
 ### 3. Configurar el Backend (.env)
@@ -110,16 +106,16 @@ DB_PORT=3306
 DB_USER=aura_user
 DB_PASSWORD=TU_PASSWORD_SEGURO
 DB_NAME=aura_music_db
-DOWNLOAD_DIR=/var/www/aura-music/downloads
+DOWNLOAD_DIR=/var/www/AuraDowloader/downloads
 FRONTEND_URL=http://aura-downloader.duckdns.org:3000
 ```
 
 ### 4. Crear usuario y base de datos MySQL
 
-```sql
--- Conectar como root a MySQL
+```bash
 mysql -u root -p
-
+```
+```sql
 CREATE USER 'aura_user'@'localhost' IDENTIFIED BY 'TU_PASSWORD_SEGURO';
 GRANT ALL PRIVILEGES ON aura_music_db.* TO 'aura_user'@'localhost';
 FLUSH PRIVILEGES;
@@ -128,16 +124,51 @@ EXIT;
 
 > El backend crea la base de datos `aura_music_db` automáticamente al arrancar.
 
-### 5. Instalar dependencias del Backend
+### 5. Entorno virtual y dependencias del Backend (Linux)
 
 ```bash
-pip3 install -r aura-backend/requirements.txt
+cd /var/www/AuraDowloader/aura-backend
+
+# Crear el entorno virtual
+python3 -m venv .venv
+
+# Activar el entorno virtual (Linux — usa / no \)
+source .venv/bin/activate
+
+# Instalar dependencias
+pip install -r requirements.txt
+
+# Desactivar cuando termines (opcional)
+deactivate
 ```
 
-### 6. Instalar dependencias y Build del Frontend
+> 💡 A diferencia de Windows, en Linux el comando es siempre:
+> ```bash
+> source .venv/bin/activate   # Activar
+> deactivate                  # Desactivar
+> ```
+
+### 6. Actualizar el ecosystem.config.js para usar .venv en Linux
+
+Edita el `interpreter` en `ecosystem.config.js` para apuntar al Python del `.venv`:
 
 ```bash
-cd aura-frontend
+nano /var/www/AuraDowloader/ecosystem.config.js
+```
+
+Cambia la línea del backend:
+```js
+// Antes:
+interpreter: 'python3',
+
+// Después (usa el Python del .venv):
+interpreter: '/var/www/AuraDowloader/aura-backend/.venv/bin/python3',
+```
+
+### 7. Instalar dependencias y Build del Frontend
+
+```bash
+cd /var/www/AuraDowloader/aura-frontend
 npm install
 
 # Build de producción con las URLs del VPS
@@ -148,7 +179,7 @@ npm run build
 cd ..
 ```
 
-### 7. Instalar PM2 y levantar la aplicación
+### 8. Instalar PM2 y levantar la aplicación
 
 ```bash
 # Instalar PM2 globalmente
@@ -160,12 +191,13 @@ pm2 start ecosystem.config.js --env production
 # Verificar que están corriendo
 pm2 status
 
-# Guardar la configuración para auto-arranque
+# Guardar para auto-arranque tras reinicio del servidor
 pm2 save
 pm2 startup
+# Ejecuta el comando que pm2 te muestra en pantalla
 ```
 
-### 8. Verificar el despliegue
+### 9. Verificar el despliegue
 
 ```bash
 # Verificar backend
@@ -189,6 +221,7 @@ La aplicación estará disponible en:
 pm2 status                    # Ver estado de todos los procesos
 pm2 logs                      # Ver todos los logs
 pm2 logs aura-backend         # Logs solo del backend
+pm2 logs aura-frontend        # Logs solo del frontend
 pm2 restart aura-backend      # Reiniciar el backend
 pm2 restart all               # Reiniciar todos los procesos
 pm2 stop all                  # Detener todos los procesos
