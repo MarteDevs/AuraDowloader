@@ -2,6 +2,8 @@
 // Aura Music Downloader — PM2 Ecosystem Config
 // VPS: aura-downloader.duckdns.org (5.189.171.171)
 //
+// El frontend lo sirve Nginx — PM2 solo gestiona el backend.
+//
 // Uso:
 //   pm2 start ecosystem.config.js --env production
 // =====================================================
@@ -9,11 +11,11 @@
 module.exports = {
   apps: [
     {
-      // ─── Backend FastAPI ──────────────────────────
+      // ─── Backend FastAPI (único proceso PM2) ──────
       name: 'aura-backend',
       cwd: './aura-backend',
 
-      // Apunta directamente al uvicorn del .venv (sin usar -m)
+      // Apunta directamente al uvicorn del .venv
       script: '.venv/bin/uvicorn',
       args: 'app.main:app --host 0.0.0.0 --port 9000 --workers 2',
       interpreter: 'none',
@@ -29,10 +31,10 @@ module.exports = {
         DB_PASSWORD: 'CAMBIA_ESTE_PASSWORD_SEGURO',
         DB_NAME: 'aura_music_db',
         DOWNLOAD_DIR: '/var/www/AuraDowloader/downloads',
-        FRONTEND_URL: 'http://aura-downloader.duckdns.org:3000',
+        FRONTEND_URL: 'http://aura-downloader.duckdns.org',
       },
 
-      // DESARROLLO — Windows local (usar .venv\Scripts\uvicorn.exe manualmente)
+      // DESARROLLO — Windows local
       env_development: {
         NODE_ENV: 'development',
         HOST: '127.0.0.1',
@@ -56,32 +58,6 @@ module.exports = {
       error_file: './logs/backend-error.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
       merge_logs: true,
-    },
-
-    {
-      // ─── Frontend estático con serve ──────────────
-      name: 'aura-frontend',
-      cwd: './aura-frontend',
-
-      // serve@14: la bandera correcta es -l <puerto>
-      script: 'npx',
-      args: 'serve dist -l 3000 --single',
-
-      env_production: {
-        NODE_ENV: 'production',
-      },
-      env_development: {
-        NODE_ENV: 'development',
-      },
-
-      instances: 1,
-      exec_mode: 'fork',
-      autorestart: true,
-      watch: false,
-
-      out_file: './logs/frontend-out.log',
-      error_file: './logs/frontend-error.log',
-      log_date_format: 'YYYY-MM-DD HH:mm:ss',
     },
   ],
 };
