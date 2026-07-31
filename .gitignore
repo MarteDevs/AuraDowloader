@@ -29,6 +29,7 @@ aura-backend/downloads/
 aura-backend/temp/
 aura-backend/settings.json
 settings.json
+youtube_cookies.txt
 *.mp3
 *.flac
 *.m4a
