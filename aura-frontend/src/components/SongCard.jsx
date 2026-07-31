@@ -59,12 +59,12 @@ export function SongCard({ track, onDownload, defaultQuality }) {
       </div>
 
       {/* Action Footer */}
-      <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">
+      <div className="pt-3 mt-2 border-t border-slate-800/80 space-y-2">
         {/* Quality Selector dropdown */}
         <select
           value={selectedQuality}
           onChange={(e) => setSelectedQuality(e.target.value)}
-          className="bg-slate-900/90 text-slate-300 text-xs font-semibold px-2 py-1.5 rounded-lg border border-slate-700 focus:outline-none focus:border-indigo-500 cursor-pointer"
+          className="w-full bg-slate-900/90 text-slate-300 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-slate-700/80 focus:outline-none focus:border-indigo-500 cursor-pointer"
         >
           {track.engine === 'deezer' && track.has_flac && (
             <option value="flac">FLAC (Lossless)</option>
@@ -77,12 +77,12 @@ export function SongCard({ track, onDownload, defaultQuality }) {
         <button
           onClick={handleDownload}
           disabled={isDownloading}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-600/20 active:scale-95 transition-all disabled:opacity-50"
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-600/20 active:scale-95 transition-all disabled:opacity-50"
         >
           {isDownloading ? (
             <>
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              <span>Añadiendo</span>
+              <span>Añadiendo a cola...</span>
             </>
           ) : (
             <>

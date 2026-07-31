@@ -104,8 +104,8 @@ export default function App() {
 
         {/* Results Section */}
         {hasSearched && (
-          <section className="space-y-4 animate-fade-in">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <section className="space-y-5 animate-fade-in pt-2">
+            <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
               <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2">
                 <Music className="w-5 h-5 text-indigo-400" />
                 Resultados para <span className="text-indigo-300">"{searchQuery}"</span>
@@ -120,7 +120,7 @@ export default function App() {
                 <p className="text-xs text-slate-500">Prueba cambiando las palabras clave o alternando entre el motor YouTube y Deezer.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-5">
                 {searchResults.map((track) => (
                   <SongCard
                     key={track.id}
