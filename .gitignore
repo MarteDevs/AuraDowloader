@@ -1,0 +1,56 @@
+# Dependencies & Package Managers
+node_modules/
+.pnpm-store/
+.yarn/
+
+# Build & Output
+dist/
+dist-ssr/
+build/
+*.tsbuildinfo
+aura-frontend/dist/
+
+# Python & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Aura App Specific Runtime Data & Sensitive Files
+aura-backend/downloads/
+aura-backend/temp/
+aura-backend/settings.json
+settings.json
+*.mp3
+*.flac
+*.m4a
+*.webm
+*.part
+*.ytdl
+
+# Logs & Environment Variables
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Editor & System Files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
