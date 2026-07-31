@@ -46,6 +46,52 @@ def search_deezer(query: str, limit: int = 15, has_arl: bool = False) -> list[di
 
     return results
 
+def search_deezer_albums(query: str, limit: int = 15) -> list[dict]:
+    results = []
+    try:
+        url = "https://api.deezer.com/search/album"
+        response = requests.get(url, params={"q": query, "limit": limit}, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            for album in data.get("data", []):
+                artist = album.get("artist", {})
+                results.append({
+                    "id": str(album.get("id")),
+                    "title": album.get("title", "Unknown Album"),
+                    "artist": artist.get("name", "Unknown Artist"),
+                    "thumbnail": album.get("cover_medium") or album.get("cover_big") or "",
+                    "nb_tracks": album.get("nb_tracks", 0),
+                    "type": "album",
+                    "engine": "deezer",
+                    "url": album.get("link", "")
+                })
+    except Exception as e:
+        logger.error(f"Deezer album search error: {e}")
+
+    return results
+
+def get_deezer_album_tracks(album_id: str) -> list[dict]:
+    tracks = []
+    try:
+        url = f"https://api.deezer.com/album/{album_id}/tracks"
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            for i, track in enumerate(data.get("data", []), start=1):
+                artist = track.get("artist", {})
+                tracks.append({
+                    "id": str(track.get("id")),
+                    "title": track.get("title"),
+                    "artist": artist.get("name", "Unknown Artist"),
+                    "duration": format_duration(track.get("duration", 0)),
+                    "duration_sec": track.get("duration", 0),
+                    "track_number": i,
+                    "engine": "deezer"
+                })
+    except Exception as e:
+        logger.error(f"Error fetching Deezer album tracks: {e}")
+    return tracks
+
 def download_deezer_track(track_id: str, track_title: str, artist_name: str, output_dir: Path, arl_token: str = "", preferred_quality: str = "flac", progress_hook=None) -> dict:
     """
     Attempts to download lossless audio from Deezer if valid ARL token is provided.

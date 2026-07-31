@@ -16,6 +16,14 @@ class DownloadRequest(BaseModel):
     engine: str = "youtube"
     quality: str = "320k"
 
+class AlbumDownloadRequest(BaseModel):
+    album_id: str
+    album_title: str
+    artist: str
+    engine: str = "youtube"
+    quality: str = "320k"
+    tracks: list[dict]
+
 @router.post("/download")
 def start_download(req: DownloadRequest):
     track_info = req.model_dump()
@@ -24,6 +32,29 @@ def start_download(req: DownloadRequest):
         "status": "queued",
         "download_id": item.id,
         "item": item
+    }
+
+@router.post("/download/album")
+def start_album_download(req: AlbumDownloadRequest):
+    queued_items = []
+    for track in req.tracks:
+        track_info = {
+            "id": track.get("id"),
+            "title": track.get("title", "Unknown Track"),
+            "artist": track.get("artist") or req.artist,
+            "album": req.album_title,
+            "thumbnail": track.get("thumbnail") or "",
+            "url": track.get("url") or "",
+            "engine": req.engine
+        }
+        item = download_manager.add_to_queue(track_info, quality=req.quality)
+        queued_items.append(item)
+
+    return {
+        "status": "album_queued",
+        "album_title": req.album_title,
+        "total_tracks": len(queued_items),
+        "items": queued_items
     }
 
 @router.get("/download/queue")

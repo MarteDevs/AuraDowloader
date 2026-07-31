@@ -10,6 +10,20 @@ export const api = {
     return res.data;
   },
 
+  async searchAlbums(query, engine = 'youtube') {
+    const res = await axios.get(`${API_BASE}/search/albums`, {
+      params: { q: query, engine }
+    });
+    return res.data;
+  },
+
+  async getAlbumTracks(albumId, engine = 'youtube') {
+    const res = await axios.get(`${API_BASE}/album/${albumId}/tracks`, {
+      params: { engine }
+    });
+    return res.data;
+  },
+
   async startDownload(track, quality = '320k') {
     const res = await axios.post(`${API_BASE}/download`, {
       id: track.id,
@@ -19,6 +33,18 @@ export const api = {
       url: track.url || '',
       engine: track.engine || 'youtube',
       quality: quality
+    });
+    return res.data;
+  },
+
+  async startAlbumDownload(albumData, quality = '320k') {
+    const res = await axios.post(`${API_BASE}/download/album`, {
+      album_id: albumData.id,
+      album_title: albumData.title,
+      artist: albumData.artist,
+      engine: albumData.engine || 'youtube',
+      quality: quality,
+      tracks: albumData.tracks
     });
     return res.data;
   },

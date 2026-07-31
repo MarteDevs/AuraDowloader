@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { SearchBar } from './components/SearchBar';
 import { SongCard } from './components/SongCard';
+import { AlbumCard } from './components/AlbumCard';
 import { DownloadQueue } from './components/DownloadQueue';
 import { SettingsModal } from './components/SettingsModal';
 import { api } from './services/api';
@@ -12,6 +13,7 @@ export default function App() {
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   const [activeEngine, setActiveEngine] = useState('youtube');
+  const [searchType, setSearchType] = useState('tracks'); // 'tracks' or 'albums'
   const [hasSearched, setHasSearched] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -63,8 +65,13 @@ export default function App() {
     setHasSearched(true);
     setSearchQuery(query);
     try {
-      const data = await api.search(query, activeEngine);
-      setSearchResults(data.results || []);
+      if (searchType === 'albums') {
+        const data = await api.searchAlbums(query, activeEngine);
+        setSearchResults(data.results || []);
+      } else {
+        const data = await api.search(query, activeEngine);
+        setSearchResults(data.results || []);
+      }
     } catch (err) {
       console.error('Search failed', err);
       setSearchResults([]);
@@ -80,6 +87,16 @@ export default function App() {
       setIsQueueOpen(true);
     } catch (err) {
       alert('Error iniciando descarga: ' + err.message);
+    }
+  };
+
+  const handleDownloadAlbum = async (albumData, quality) => {
+    try {
+      await api.startAlbumDownload(albumData, quality);
+      fetchQueue();
+      setIsQueueOpen(true);
+    } catch (err) {
+      alert('Error iniciando descarga de álbum: ' + err.message);
     }
   };
 
@@ -112,6 +129,8 @@ export default function App() {
             isLoading={isSearching}
             activeEngine={activeEngine}
             setEngine={setActiveEngine}
+            searchType={searchType}
+            setSearchType={setSearchType}
           />
         </section>
 
@@ -120,10 +139,16 @@ export default function App() {
           <section className="space-y-5 animate-fade-in pt-2">
             <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
               <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2">
-                <Music className="w-5 h-5 text-indigo-400" />
+                {searchType === 'albums' ? (
+                  <Disc className="w-5 h-5 text-indigo-400" />
+                ) : (
+                  <Music className="w-5 h-5 text-indigo-400" />
+                )}
                 Resultados para <span className="text-indigo-300">"{searchQuery}"</span>
               </h3>
-              <span className="text-xs text-slate-400 font-medium">{searchResults.length} canciones encontradas</span>
+              <span className="text-xs text-slate-400 font-medium">
+                {searchResults.length} {searchType === 'albums' ? 'álbumes encontrados' : 'canciones encontradas'}
+              </span>
             </div>
 
             {searchResults.length === 0 && !isSearching ? (
@@ -134,12 +159,21 @@ export default function App() {
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-5">
-                {searchResults.map((track) => (
-                  <SongCard
-                    key={track.id}
-                    track={track}
-                    onDownload={handleDownload}
-                  />
+                {searchResults.map((item) => (
+                  searchType === 'albums' ? (
+                    <AlbumCard
+                      key={item.id}
+                      album={item}
+                      onDownloadAlbum={handleDownloadAlbum}
+                      onDownloadSingleTrack={handleDownload}
+                    />
+                  ) : (
+                    <SongCard
+                      key={item.id}
+                      track={item}
+                      onDownload={handleDownload}
+                    />
+                  )
                 ))}
               </div>
             )}

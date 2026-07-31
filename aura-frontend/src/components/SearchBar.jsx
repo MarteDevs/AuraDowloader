@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Search, Youtube, Sparkles, X, Loader2 } from 'lucide-react';
 
-export function SearchBar({ onSearch, isLoading, activeEngine, setEngine }) {
+export function SearchBar({ onSearch, isLoading, activeEngine, setEngine, searchType, setSearchType }) {
   const [query, setQuery] = useState('');
 
   const handleSubmit = (e) => {
@@ -26,7 +26,7 @@ export function SearchBar({ onSearch, isLoading, activeEngine, setEngine }) {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Busca por canción, artista, álbum o pega una URL..."
+            placeholder={searchType === 'albums' ? "Busca álbumes o discos de un artista..." : "Busca por canción, artista o pega una URL..."}
             className="w-full bg-transparent px-4 py-3 text-white placeholder-slate-400 focus:outline-none text-base font-medium"
           />
 
@@ -48,16 +48,40 @@ export function SearchBar({ onSearch, isLoading, activeEngine, setEngine }) {
             {isLoading ? (
               <Loader2 className="w-5 h-5 animate-spin" />
             ) : (
-              <>
-                <span>Buscar</span>
-              </>
+              <span>Buscar</span>
             )}
           </button>
         </div>
       </form>
 
-      {/* Engine Switch & Suggestions */}
+      {/* Mode Selectors & Engine Switches */}
       <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+        {/* Search Type Filter Pills */}
+        <div className="flex items-center gap-1.5 bg-slate-900/80 p-1.5 rounded-xl border border-slate-800">
+          <button
+            type="button"
+            onClick={() => setSearchType('tracks')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              searchType === 'tracks'
+                ? 'bg-indigo-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            🎵 Canciones
+          </button>
+          <button
+            type="button"
+            onClick={() => setSearchType('albums')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              searchType === 'albums'
+                ? 'bg-indigo-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            💿 Álbumes Completos
+          </button>
+        </div>
+
         {/* Engine Toggle Pills */}
         <div className="flex items-center gap-2 bg-slate-900/80 p-1.5 rounded-xl border border-slate-800">
           <button
@@ -70,7 +94,7 @@ export function SearchBar({ onSearch, isLoading, activeEngine, setEngine }) {
             }`}
           >
             <Youtube className="w-4 h-4 text-red-500" />
-            Motor YouTube (HQ)
+            YouTube
           </button>
 
           <button
@@ -83,26 +107,26 @@ export function SearchBar({ onSearch, isLoading, activeEngine, setEngine }) {
             }`}
           >
             <Sparkles className="w-4 h-4 text-amber-400" />
-            Motor Deezer (FLAC Lossless)
+            Deezer FLAC
           </button>
         </div>
+      </div>
 
-        {/* Quick Suggestions */}
-        <div className="flex items-center gap-2 overflow-x-auto py-1">
-          <span className="text-xs text-slate-500 font-medium hidden sm:inline">Tendencias:</span>
-          {quickSearches.map((item) => (
-            <button
-              key={item}
-              onClick={() => {
-                setQuery(item);
-                onSearch(item);
-              }}
-              className="px-2.5 py-1 rounded-lg bg-slate-800/60 hover:bg-slate-700/60 text-slate-300 text-xs transition-colors border border-slate-700/40"
-            >
-              {item}
-            </button>
-          ))}
-        </div>
+      {/* Quick Suggestions */}
+      <div className="flex items-center gap-2 overflow-x-auto py-1">
+        <span className="text-xs text-slate-500 font-medium hidden sm:inline">Tendencias:</span>
+        {quickSearches.map((item) => (
+          <button
+            key={item}
+            onClick={() => {
+              setQuery(item);
+              onSearch(item);
+            }}
+            className="px-2.5 py-1 rounded-lg bg-slate-800/60 hover:bg-slate-700/60 text-slate-300 text-xs transition-colors border border-slate-700/40"
+          >
+            {item}
+          </button>
+        ))}
       </div>
     </div>
   );
