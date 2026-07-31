@@ -72,10 +72,10 @@ export default function App() {
     try {
       if (searchType === 'albums') {
         const data = await api.searchAlbums(query, activeEngine);
-        setSearchResults(data.results || []);
+        setSearchResults((data && Array.isArray(data.results)) ? data.results : []);
       } else {
         const data = await api.search(query, activeEngine);
-        setSearchResults(data.results || []);
+        setSearchResults((data && Array.isArray(data.results)) ? data.results : []);
       }
     } catch (err) {
       console.error('Search failed', err);
