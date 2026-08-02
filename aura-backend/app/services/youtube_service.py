@@ -185,7 +185,7 @@ def download_youtube_track(video_url: str, output_dir: Path, preferred_quality: 
     ffmpeg_bin = get_ffmpeg_path()
     
     preferred_ext = "mp3" if preferred_quality in ["320k", "standard"] else "flac"
-    out_tmpl = str(output_dir / "%(title)s.%(ext)s")
+    out_tmpl = str(output_dir / "%(id)s.%(ext)s")
     
     import sys
 
@@ -291,9 +291,11 @@ def download_youtube_track(video_url: str, output_dir: Path, preferred_quality: 
     thumbnail_url = info.get("thumbnail")
     
     clean_t = clean_filename(title)
-    final_file = output_dir / f"{clean_t}.{preferred_ext}"
+    video_id = info.get("id", "unknown_id")
+    final_file = output_dir / f"{video_id}.{preferred_ext}"
 
     if not final_file.exists():
+        logger.warning(f"File not found at exact expected path {final_file}. Falling back to recent files.")
         files = list(output_dir.glob(f"*.{preferred_ext}"))
         if files:
             final_file = max(files, key=os.path.getctime)
@@ -343,7 +345,7 @@ def download_youtube_track(video_url: str, output_dir: Path, preferred_quality: 
         "title": title,
         "artist": artist,
         "file_path": str(final_file),
-        "file_name": final_file.name if final_file.exists() else f"{title}.{preferred_ext}",
+        "file_name": f"{clean_t}.{preferred_ext}",
         "quality": preferred_quality,
         "engine": "youtube"
     }
