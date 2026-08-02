@@ -187,17 +187,11 @@ def download_youtube_track(video_url: str, output_dir: Path, preferred_quality: 
     preferred_ext = "mp3" if preferred_quality in ["320k", "standard"] else "flac"
     out_tmpl = str(output_dir / "%(title)s.%(ext)s")
     
-    # Find yt-dlp binary (inside venv)
-    yt_dlp_bin = shutil.which("yt-dlp")
-    if not yt_dlp_bin:
-        # Fallback: try to find it relative to this Python
-        import sys
-        venv_bin = Path(sys.executable).parent
-        yt_dlp_bin = str(venv_bin / "yt-dlp")
+    import sys
 
-    # Build CLI command (proven to work from terminal)
+    # Build CLI command using python -m yt_dlp (guaranteed to use venv's version)
     cmd = [
-        yt_dlp_bin,
+        sys.executable, "-m", "yt_dlp",
         "--format", "bestaudio/best",
         "--extract-audio",
         "--audio-format", preferred_ext,
@@ -217,7 +211,6 @@ def download_youtube_track(video_url: str, output_dir: Path, preferred_quality: 
     cookies_path = Path(settings.cookies_file)
     if cookies_path.exists():
         cmd.extend(["--cookies", str(cookies_path)])
-        logger.info(f"Using YouTube cookies from: {cookies_path}")
 
     # Add ffmpeg location
     if ffmpeg_bin:
@@ -225,6 +218,12 @@ def download_youtube_track(video_url: str, output_dir: Path, preferred_quality: 
 
     # Add the video URL
     cmd.append(video_url)
+
+    # Ensure node is in PATH for the subprocess
+    env = os.environ.copy()
+    env["PATH"] = "/usr/local/bin:/usr/bin:/bin:" + env.get("PATH", "")
+
+    logger.info(f"Running yt-dlp CLI: {' '.join(cmd[:8])}... {video_url}")
 
     # Notify progress
     if progress_hook:
@@ -241,7 +240,8 @@ def download_youtube_track(video_url: str, output_dir: Path, preferred_quality: 
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=300  # 5 minute timeout
+                timeout=300,  # 5 minute timeout
+                env=env
             )
             
             if result.returncode == 0:
