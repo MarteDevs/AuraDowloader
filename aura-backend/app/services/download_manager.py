@@ -77,8 +77,39 @@ class DownloadManager:
         return sorted(self.queue.values(), key=lambda x: x.created_at, reverse=True)
 
     def get_by_id(self, download_id: str) -> DownloadItem | None:
-        return self.queue.get(download_id)
-
+        item = self.queue.get(download_id)
+        if item:
+            return item
+        
+        # If not in memory (e.g. after restart), try to load from DB
+        try:
+            db = SessionLocal()
+            try:
+                db_track = db.query(TrackModel).filter(TrackModel.id == download_id).first()
+                if db_track and db_track.file_path:
+                    # Reconstruct a DownloadItem
+                    item = DownloadItem(
+                        id=db_track.id,
+                        title=db_track.title,
+                        artist=db_track.artist,
+                        thumbnail=db_track.thumbnail,
+                        engine=db_track.engine,
+                        quality=db_track.quality,
+                        status="completed",
+                        progress=100.0,
+                        file_name=db_track.file_name,
+                        file_path=db_track.file_path,
+                        created_at=time.time()
+                    )
+                    # Cache it back in memory
+                    self.queue[download_id] = item
+                    return item
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error(f"Error loading track {download_id} from DB: {e}")
+            
+        return None
     def _save_to_db(self, item: DownloadItem, track_info: dict):
         try:
             db = SessionLocal()
