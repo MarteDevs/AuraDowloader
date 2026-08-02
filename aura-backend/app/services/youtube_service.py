@@ -204,6 +204,7 @@ def download_youtube_track(video_url: str, output_dir: Path, preferred_quality: 
         "--remote-components", "ejs:github",
         "--no-warnings",
         "--print-json",
+        "-v",  # Add verbose for debugging
     ]
 
     # Add cookies if available
@@ -244,6 +245,13 @@ def download_youtube_track(video_url: str, output_dir: Path, preferred_quality: 
                 env=env
             )
             
+            # Write debug log
+            debug_log = output_dir.parent / "temp" / f"ytdlp_debug_{attempt}.log"
+            debug_log.parent.mkdir(exist_ok=True, parents=True)
+            with open(debug_log, "w", encoding="utf-8") as f:
+                f.write(f"--- STDOUT ---\n{result.stdout}\n--- STDERR ---\n{result.stderr}")
+            logger.info(f"Wrote verbose debug log to {debug_log}")
+
             if result.returncode == 0:
                 # Parse JSON output from --print-json
                 stdout_lines = result.stdout.strip().split("\n")
@@ -256,7 +264,7 @@ def download_youtube_track(video_url: str, output_dir: Path, preferred_quality: 
                 break
             else:
                 last_error = result.stderr.strip() or result.stdout.strip()
-                logger.warning(f"Download attempt {attempt}/{max_attempts} failed for {video_url}: {last_error}")
+                logger.warning(f"Download attempt {attempt}/{max_attempts} failed for {video_url}. See debug log.")
                 if attempt < max_attempts:
                     import time
                     time.sleep(2.0)
