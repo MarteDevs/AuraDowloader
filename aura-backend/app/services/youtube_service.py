@@ -220,9 +220,14 @@ def download_youtube_track(video_url: str, output_dir: Path, preferred_quality: 
     # Add the video URL
     cmd.append(video_url)
 
-    # Ensure node is in PATH for the subprocess
+    # Ensure node is in PATH for the subprocess and strip PM2/Node options
+    # PM2 often injects NODE_OPTIONS or other variables that cause node to crash (SIGABRT -6)
+    # when yt-dlp runs its JS challenge solver.
     env = os.environ.copy()
     env["PATH"] = "/usr/local/bin:/usr/bin:/bin:" + env.get("PATH", "")
+    for key in list(env.keys()):
+        if key.startswith("NODE_") or key.startswith("PM2_") or key == "npm_config_node_gyp":
+            del env[key]
 
     logger.info(f"Running yt-dlp CLI: {' '.join(cmd[:8])}... {video_url}")
 
