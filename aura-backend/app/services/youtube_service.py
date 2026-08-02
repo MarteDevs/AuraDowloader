@@ -9,8 +9,22 @@ from mutagen.mp3 import MP3
 from mutagen.id3 import ID3, APIC, TIT2, TPE1, TALB
 
 from app.core.ffmpeg_utils import get_ffmpeg_path
+from app.core.config import load_settings, BASE_DIR
 
 logger = logging.getLogger(__name__)
+
+# Path to yt-dlp config file with --remote-components and --js-runtimes
+YT_DLP_CONF = BASE_DIR / "yt-dlp.conf"
+
+def _apply_yt_dlp_extras(ydl_opts: dict) -> dict:
+    """Apply cookies and config file to ydl_opts."""
+    settings = load_settings()
+    cookies_path = Path(settings.cookies_file)
+    if cookies_path.exists():
+        ydl_opts["cookiefile"] = str(cookies_path)
+    if YT_DLP_CONF.exists():
+        ydl_opts["config_locations"] = [str(YT_DLP_CONF)]
+    return ydl_opts
 
 def format_duration(seconds: int | float | None) -> str:
     if not seconds:
@@ -30,16 +44,8 @@ def search_youtube(query: str, limit: int = 15) -> list[dict]:
         "no_warnings": True,
         "extract_flat": True,
         "default_search": f"ytsearch{limit}",
-        "js_runtimes": {"node": {}},
-        "remote_components": {"ejs": "github"}
     }
-    
-    from app.core.config import load_settings
-    settings = load_settings()
-    cookies_path = Path(settings.cookies_file)
-    if cookies_path.exists():
-        ydl_opts["cookiefile"] = str(cookies_path)
-
+    _apply_yt_dlp_extras(ydl_opts)
     if ffmpeg_bin:
         ydl_opts["ffmpeg_location"] = os.path.dirname(ffmpeg_bin)
 
@@ -81,16 +87,8 @@ def search_youtube_albums(query: str, limit: int = 15) -> list[dict]:
         "quiet": True,
         "no_warnings": True,
         "extract_flat": True,
-        "js_runtimes": {"node": {}},
-        "remote_components": {"ejs": "github"}
     }
-    
-    from app.core.config import load_settings
-    settings = load_settings()
-    cookies_path = Path(settings.cookies_file)
-    if cookies_path.exists():
-        ydl_opts["cookiefile"] = str(cookies_path)
-
+    _apply_yt_dlp_extras(ydl_opts)
     if ffmpeg_bin:
         ydl_opts["ffmpeg_location"] = os.path.dirname(ffmpeg_bin)
 
@@ -132,16 +130,8 @@ def get_youtube_playlist_tracks(playlist_url_or_id: str) -> list[dict]:
         "quiet": True,
         "no_warnings": True,
         "extract_flat": True,
-        "js_runtimes": {"node": {}},
-        "remote_components": {"ejs": "github"}
     }
-    
-    from app.core.config import load_settings
-    settings = load_settings()
-    cookies_path = Path(settings.cookies_file)
-    if cookies_path.exists():
-        ydl_opts["cookiefile"] = str(cookies_path)
-
+    _apply_yt_dlp_extras(ydl_opts)
     if ffmpeg_bin:
         ydl_opts["ffmpeg_location"] = os.path.dirname(ffmpeg_bin)
 
@@ -207,20 +197,9 @@ def download_youtube_track(video_url: str, output_dir: Path, preferred_quality: 
         "quiet": True,
         "no_warnings": True,
         "retries": 10,
-        "fragment_retries": 10,
-        "js_runtimes": {"node": {}},
-        "remote_components": {"ejs": "github"}
+        "fragment_retries": 10
     }
-    
-    from app.core.config import load_settings
-    settings = load_settings()
-    cookies_path = Path(settings.cookies_file)
-    if cookies_path.exists():
-        logger.info(f"Using YouTube cookies from: {cookies_path}")
-        ydl_opts["cookiefile"] = str(cookies_path)
-    else:
-        logger.warning(f"YouTube cookies file NOT FOUND at: {cookies_path}")
-    
+    _apply_yt_dlp_extras(ydl_opts)
     if ffmpeg_bin:
         ydl_opts["ffmpeg_location"] = os.path.dirname(ffmpeg_bin)
         
