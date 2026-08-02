@@ -177,46 +177,94 @@ def get_youtube_playlist_tracks(playlist_url_or_id: str) -> list[dict]:
     return tracks
 
 def download_youtube_track(video_url: str, output_dir: Path, preferred_quality: str = "320k", progress_hook=None) -> dict:
+    import subprocess
+    import json as _json
+    import shutil
+
     output_dir.mkdir(parents=True, exist_ok=True)
     ffmpeg_bin = get_ffmpeg_path()
     
     preferred_ext = "mp3" if preferred_quality in ["320k", "standard"] else "flac"
     out_tmpl = str(output_dir / "%(title)s.%(ext)s")
     
-    ydl_opts = {
-        "format": "bestaudio/best",
-        "outtmpl": out_tmpl,
-        "writethumbnail": True,
-        "postprocessors": [
-            {
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": preferred_ext,
-                "preferredquality": "320" if preferred_quality == "320k" else "192",
-            }
-        ],
-        "quiet": True,
-        "no_warnings": True,
-        "retries": 10,
-        "fragment_retries": 10
-    }
-    _apply_yt_dlp_extras(ydl_opts)
+    # Find yt-dlp binary (inside venv)
+    yt_dlp_bin = shutil.which("yt-dlp")
+    if not yt_dlp_bin:
+        # Fallback: try to find it relative to this Python
+        import sys
+        venv_bin = Path(sys.executable).parent
+        yt_dlp_bin = str(venv_bin / "yt-dlp")
+
+    # Build CLI command (proven to work from terminal)
+    cmd = [
+        yt_dlp_bin,
+        "--format", "bestaudio/best",
+        "--extract-audio",
+        "--audio-format", preferred_ext,
+        "--audio-quality", "320" if preferred_quality == "320k" else "192",
+        "--output", out_tmpl,
+        "--write-thumbnail",
+        "--retries", "10",
+        "--fragment-retries", "10",
+        "--js-runtimes", "node",
+        "--remote-components", "ejs:github",
+        "--no-warnings",
+        "--print-json",
+    ]
+
+    # Add cookies if available
+    settings = load_settings()
+    cookies_path = Path(settings.cookies_file)
+    if cookies_path.exists():
+        cmd.extend(["--cookies", str(cookies_path)])
+        logger.info(f"Using YouTube cookies from: {cookies_path}")
+
+    # Add ffmpeg location
     if ffmpeg_bin:
-        ydl_opts["ffmpeg_location"] = os.path.dirname(ffmpeg_bin)
-        
+        cmd.extend(["--ffmpeg-location", os.path.dirname(ffmpeg_bin)])
+
+    # Add the video URL
+    cmd.append(video_url)
+
+    # Notify progress
     if progress_hook:
-        ydl_opts["progress_hooks"] = [progress_hook]
+        progress_hook({"status": "downloading", "_percent_str": "0%", "downloaded_bytes": 0, "total_bytes": 0})
 
     max_attempts = 3
-    info = None
     last_error = None
+    info = None
 
     for attempt in range(1, max_attempts + 1):
         try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(video_url, download=True)
+            logger.info(f"Download attempt {attempt}/{max_attempts} for {video_url}")
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=300  # 5 minute timeout
+            )
+            
+            if result.returncode == 0:
+                # Parse JSON output from --print-json
+                stdout_lines = result.stdout.strip().split("\n")
+                for line in reversed(stdout_lines):
+                    try:
+                        info = _json.loads(line)
+                        break
+                    except _json.JSONDecodeError:
+                        continue
                 break
+            else:
+                last_error = result.stderr.strip() or result.stdout.strip()
+                logger.warning(f"Download attempt {attempt}/{max_attempts} failed for {video_url}: {last_error}")
+                if attempt < max_attempts:
+                    import time
+                    time.sleep(2.0)
+        except subprocess.TimeoutExpired:
+            last_error = "Download timed out after 5 minutes"
+            logger.warning(f"Download attempt {attempt}/{max_attempts} timed out for {video_url}")
         except Exception as e:
-            last_error = e
+            last_error = str(e)
             logger.warning(f"Download attempt {attempt}/{max_attempts} failed for {video_url}: {e}")
             if attempt < max_attempts:
                 import time
@@ -236,51 +284,54 @@ def download_youtube_track(video_url: str, output_dir: Path, preferred_quality: 
         files = list(output_dir.glob(f"*.{preferred_ext}"))
         if files:
             final_file = max(files, key=os.path.getctime)
-            if files:
-                final_file = max(files, key=os.path.getctime)
 
-        # Inject ID3 tags if MP3
-        if final_file.exists() and preferred_ext == "mp3":
+    # Notify progress complete
+    if progress_hook:
+        progress_hook({"status": "finished", "filename": str(final_file)})
+
+    # Inject ID3 tags if MP3
+    if final_file.exists() and preferred_ext == "mp3":
+        try:
+            audio = MP3(final_file, ID3=ID3)
             try:
-                audio = MP3(final_file, ID3=ID3)
+                audio.add_tags()
+            except Exception:
+                pass
+
+            audio.tags.add(TIT2(encoding=3, text=title))
+            audio.tags.add(TPE1(encoding=3, text=artist))
+            audio.tags.add(TALB(encoding=3, text="YouTube Release"))
+
+            # Download thumbnail and embed as cover art
+            if thumbnail_url:
                 try:
-                    audio.add_tags()
-                except Exception:
-                    pass
-
-                audio.tags.add(TIT2(encoding=3, text=title))
-                audio.tags.add(TPE1(encoding=3, text=artist))
-                audio.tags.add(TALB(encoding=3, text="YouTube Release"))
-
-                # Download thumbnail and embed as cover art
-                if thumbnail_url:
-                    try:
-                        thumb_path = output_dir / f"temp_{info.get('id')}.jpg"
-                        urllib.request.urlretrieve(thumbnail_url, thumb_path)
-                        with open(thumb_path, "rb") as img_file:
-                            audio.tags.add(
-                                APIC(
-                                    encoding=3,
-                                    mime="image/jpeg",
-                                    type=3,
-                                    desc="Cover",
-                                    data=img_file.read()
-                                )
+                    thumb_path = output_dir / f"temp_{info.get('id')}.jpg"
+                    urllib.request.urlretrieve(thumbnail_url, thumb_path)
+                    with open(thumb_path, "rb") as img_file:
+                        audio.tags.add(
+                            APIC(
+                                encoding=3,
+                                mime="image/jpeg",
+                                type=3,
+                                desc="Cover",
+                                data=img_file.read()
                             )
-                        if thumb_path.exists():
-                            thumb_path.unlink()
-                    except Exception as img_err:
-                        logger.warning(f"Failed to embed thumbnail: {img_err}")
+                        )
+                    if thumb_path.exists():
+                        thumb_path.unlink()
+                except Exception as img_err:
+                    logger.warning(f"Failed to embed thumbnail: {img_err}")
 
-                audio.save()
-            except Exception as tag_err:
-                logger.warning(f"Error tagging MP3 file: {tag_err}")
+            audio.save()
+        except Exception as tag_err:
+            logger.warning(f"Error tagging MP3 file: {tag_err}")
 
-        return {
-            "title": title,
-            "artist": artist,
-            "file_path": str(final_file),
-            "file_name": final_file.name if final_file.exists() else f"{title}.{preferred_ext}",
-            "quality": preferred_quality,
-            "engine": "youtube"
-        }
+    return {
+        "title": title,
+        "artist": artist,
+        "file_path": str(final_file),
+        "file_name": final_file.name if final_file.exists() else f"{title}.{preferred_ext}",
+        "quality": preferred_quality,
+        "engine": "youtube"
+    }
+
