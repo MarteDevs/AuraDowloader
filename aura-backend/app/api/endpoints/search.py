@@ -19,6 +19,13 @@ def search_tracks(
     else:
         results = search_youtube(q, limit=limit)
 
+    return {
+        "query": q,
+        "engine": engine,
+        "count": len(results),
+        "results": results
+    }
+
 @router.get("/search/albums")
 def search_albums(
     q: str = Query(..., min_length=1, description="Search query string"),
