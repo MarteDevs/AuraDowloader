@@ -30,7 +30,7 @@ def search_youtube(query: str, limit: int = 15) -> list[dict]:
         "no_warnings": True,
         "extract_flat": True,
         "default_search": f"ytsearch{limit}",
-        "js_runtimes": {"nodejs": {}},
+        "js_runtimes": {"node": {}},
     }
     
     from app.core.config import load_settings
@@ -80,7 +80,7 @@ def search_youtube_albums(query: str, limit: int = 15) -> list[dict]:
         "quiet": True,
         "no_warnings": True,
         "extract_flat": True,
-        "js_runtimes": {"nodejs": {}},
+        "js_runtimes": {"node": {}},
     }
     
     from app.core.config import load_settings
@@ -130,7 +130,7 @@ def get_youtube_playlist_tracks(playlist_url_or_id: str) -> list[dict]:
         "quiet": True,
         "no_warnings": True,
         "extract_flat": True,
-        "js_runtimes": {"nodejs": {}},
+        "js_runtimes": {"node": {}},
     }
     
     from app.core.config import load_settings
@@ -205,7 +205,7 @@ def download_youtube_track(video_url: str, output_dir: Path, preferred_quality: 
         "no_warnings": True,
         "retries": 10,
         "fragment_retries": 10,
-        "js_runtimes": {"nodejs": {}}
+        "js_runtimes": {"node": {}}
     }
     
     from app.core.config import load_settings
