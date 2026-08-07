@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+
 from app.core.db import get_db
 from app.models.track_model import TrackModel
 
@@ -15,7 +16,7 @@ def get_library(db: Session = Depends(get_db)):
 
 @router.get("/favorites")
 def get_favorites(db: Session = Depends(get_db)):
-    tracks = db.query(TrackModel).filter(TrackModel.is_favorite == True).order_by(TrackModel.created_at.desc()).all()
+    tracks = db.query(TrackModel).filter(TrackModel.is_favorite.is_(True)).order_by(TrackModel.created_at.desc()).all()
     return {
         "count": len(tracks),
         "tracks": [t.to_dict() for t in tracks]

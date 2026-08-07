@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Search, Youtube, Sparkles, X, Loader2 } from 'lucide-react';
 
 export function SearchBar({ onSearch, isLoading, activeEngine, setEngine, searchType, setSearchType }) {
@@ -131,3 +131,4 @@ export function SearchBar({ onSearch, isLoading, activeEngine, setEngine, search
     </div>
   );
 }
+

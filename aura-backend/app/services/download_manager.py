@@ -1,19 +1,23 @@
-import uuid
-import time
 import asyncio
 import logging
-from pathlib import Path
+import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
+
 from pydantic import BaseModel
 
-from app.core.config import load_settings, DOWNLOADS_DIR
+from app.core.config import DOWNLOADS_DIR, load_settings, safe_alpath
 from app.core.db import SessionLocal
 from app.models.track_model import TrackModel
-from app.services.youtube_service import download_youtube_track
 from app.services.deezer_service import download_deezer_track
 from app.services.websocket_manager import ws_manager
+from app.services.youtube_service import download_youtube_track
 
 logger = logging.getLogger(__name__)
+
+
+class _DownloadCancelled(Exception):
+    """Internal sentinel raised to break out of yt_dlp callbacks when cancelled."""
 
 class DownloadItem(BaseModel):
     id: str
@@ -34,24 +38,30 @@ class DownloadItem(BaseModel):
 class DownloadManager:
     def __init__(self, max_concurrent: int = 2):
         self.queue: dict[str, DownloadItem] = {}
+        # Stores the original track_info dict per download id so we can retry.
+        self._track_info: dict[str, dict] = {}
+        # Cancellation flags — set to True to ask the worker to stop ASAP.
+        self._cancel_flags: dict[str, bool] = {}
         self.executor = ThreadPoolExecutor(max_workers=max_concurrent)
+        self._loop: asyncio.AbstractEventLoop | None = None
 
-    def _broadcast_event(self, event_type: str, item: DownloadItem):
+    def bind_event_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Store the FastAPI event loop so worker threads can broadcast safely."""
+        self._loop = loop
+        logger.info("DownloadManager bound to event loop.")
+
+    def _broadcast_event(self, event_type: str, item: DownloadItem) -> None:
         payload = {
             "type": event_type,
             "item": item.model_dump()
         }
+        if self._loop is None or self._loop.is_closed():
+            logger.warning("Event loop not bound or closed; skipping broadcast for %s", event_type)
+            return
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                asyncio.run_coroutine_threadsafe(ws_manager.broadcast(payload), loop)
-            else:
-                asyncio.run(ws_manager.broadcast(payload))
-        except Exception:
-            try:
-                asyncio.run(ws_manager.broadcast(payload))
-            except Exception:
-                pass
+            asyncio.run_coroutine_threadsafe(ws_manager.broadcast(payload), self._loop)
+        except Exception as e:
+            logger.error(f"Failed to schedule broadcast ({event_type}): {e}")
 
     def add_to_queue(self, track_info: dict, quality: str = "320k") -> DownloadItem:
         download_id = str(uuid.uuid4())
@@ -67,11 +77,61 @@ class DownloadManager:
             created_at=time.time()
         )
         self.queue[download_id] = item
+        self._track_info[download_id] = dict(track_info)
+        self._cancel_flags[download_id] = False
         self._broadcast_event("download_queued", item)
 
         # Submit to thread pool
         self.executor.submit(self._process_download, download_id, track_info)
         return item
+
+    def cancel(self, download_id: str) -> bool:
+        """Mark a download as cancelled. Returns True if the id was found."""
+        item = self.queue.get(download_id)
+        if not item:
+            return False
+        if item.status in ("completed", "error", "cancelled"):
+            return False
+        self._cancel_flags[download_id] = True
+        item.status = "cancelled"
+        item.error_message = "Cancelled by user"
+        self._broadcast_event("download_cancelled", item)
+        return True
+
+    def remove(self, download_id: str) -> bool:
+        """Drop an item from the in-memory queue. File on disk is preserved."""
+        item = self.queue.pop(download_id, None)
+        self._track_info.pop(download_id, None)
+        self._cancel_flags.pop(download_id, None)
+        return item is not None
+
+    def retry(self, download_id: str) -> DownloadItem | None:
+        """Re-queue a previously errored/cancelled download, if its track_info is still in memory."""
+        info = self._track_info.get(download_id)
+        if not info:
+            return None
+        old = self.queue.get(download_id)
+        quality = old.quality if old else info.get("quality", "320k")
+        # Reset the in-memory item to a fresh queued state.
+        new_item = DownloadItem(
+            id=download_id,
+            title=info.get("title", "Unknown Title"),
+            artist=info.get("artist", "Unknown Artist"),
+            thumbnail=info.get("thumbnail", ""),
+            engine=info.get("engine", "youtube"),
+            quality=quality,
+            status="queued",
+            progress=0.0,
+            created_at=time.time(),
+        )
+        self.queue[download_id] = new_item
+        self._cancel_flags[download_id] = False
+        self._broadcast_event("download_queued", new_item)
+        self.executor.submit(self._process_download, download_id, info)
+        return new_item
+
+    def is_cancelled(self, download_id: str) -> bool:
+        return self._cancel_flags.get(download_id, False)
 
     def get_all(self) -> list[DownloadItem]:
         return sorted(self.queue.values(), key=lambda x: x.created_at, reverse=True)
@@ -80,7 +140,7 @@ class DownloadManager:
         item = self.queue.get(download_id)
         if item:
             return item
-        
+
         # If not in memory (e.g. after restart), try to load from DB
         try:
             db = SessionLocal()
@@ -108,7 +168,7 @@ class DownloadManager:
                 db.close()
         except Exception as e:
             logger.error(f"Error loading track {download_id} from DB: {e}")
-            
+
         return None
     def _save_to_db(self, item: DownloadItem, track_info: dict):
         try:
@@ -147,44 +207,51 @@ class DownloadManager:
         if not item:
             return
 
+        if self.is_cancelled(download_id):
+            return
+
         item.status = "downloading"
         item.progress = 1.0
         item.speed = "Buscando audio..."
         self._broadcast_event("download_progress", item)
 
         settings = load_settings()
-        out_dir = Path(settings.download_dir) if settings.download_dir else DOWNLOADS_DIR
+        try:
+            out_dir = safe_alpath(settings.download_dir) if settings.download_dir else DOWNLOADS_DIR
+        except ValueError as e:
+            logger.error(f"Refusing to write to unsafe download_dir: {e}")
+            item.status = "error"
+            item.error_message = f"Invalid download_dir: {settings.download_dir}"
+            self._broadcast_event("download_error", item)
+            return
+        out_dir.mkdir(parents=True, exist_ok=True)
 
-        def progress_hook(d):
-            if d.get("status") == "downloading":
-                total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
-                downloaded = d.get("downloaded_bytes", 0)
-                if total > 0:
-                    item.progress = round((downloaded / total) * 100, 1)
-                
-                speed_bytes = d.get("speed") or 0
-                if speed_bytes > 1024 * 1024:
-                    item.speed = f"{speed_bytes / (1024 * 1024):.1f} MB/s"
-                elif speed_bytes > 1024:
-                    item.speed = f"{speed_bytes / 1024:.0f} KB/s"
-                else:
-                    item.speed = f"{speed_bytes:.0f} B/s"
+        # Shared dict so the worker thread can mutate progress without
+        # touching the Pydantic model from inside a hook callback.
+        shared = {
+            "progress": item.progress,
+            "speed": item.speed,
+            "eta": item.eta,
+            "status": item.status,
+        }
 
-                eta_sec = d.get("eta")
-                if eta_sec is not None:
-                    mins = eta_sec // 60
-                    secs = eta_sec % 60
-                    item.eta = f"{mins:02d}:{secs:02d}"
+        def broadcast_from_hook() -> None:
+            # Honor cancellation mid-download.
+            if self.is_cancelled(download_id):
+                raise _DownloadCancelled()
+            item.progress = shared["progress"]
+            item.speed = shared["speed"]
+            item.eta = shared["eta"]
+            item.status = shared["status"]
+            self._broadcast_event("download_progress", item)
 
-                self._broadcast_event("download_progress", item)
-
-            elif d.get("status") == "finished":
-                item.status = "processing"
-                item.progress = 95.0
-                item.speed = "Etiquetando ID3..."
-                self._broadcast_event("download_progress", item)
+        from app.services.youtube_service import _build_progress_hook
+        progress_hook = _build_progress_hook(shared, broadcast_from_hook)
 
         try:
+            if self.is_cancelled(download_id):
+                return
+
             if item.engine == "deezer":
                 result = download_deezer_track(
                     track_id=track_info.get("id"),
@@ -205,6 +272,9 @@ class DownloadManager:
                     progress_hook=progress_hook
                 )
 
+            if self.is_cancelled(download_id):
+                return
+
             item.status = "completed"
             item.progress = 100.0
             item.file_name = result.get("file_name", "")
@@ -215,10 +285,19 @@ class DownloadManager:
             self._broadcast_event("download_completed", item)
             logger.info(f"Download completed successfully for {item.title}")
 
+        except _DownloadCancelled:
+            logger.info(f"Download {download_id} cancelled mid-flight.")
         except Exception as e:
+            if self.is_cancelled(download_id):
+                return
             logger.error(f"Download failed for {item.title}: {e}")
             item.status = "error"
             item.error_message = str(e)
             self._broadcast_event("download_error", item)
 
 download_manager = DownloadManager()
+
+
+def get_download_manager() -> DownloadManager:
+    """FastAPI dependency — returns the process-wide DownloadManager singleton."""
+    return download_manager

@@ -1,72 +1,82 @@
-import os
 import logging
-from pathlib import Path
-from dotenv import load_dotenv
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
 
-# Load .env from the backend root directory
-_env_path = Path(__file__).resolve().parent.parent.parent / ".env"
-load_dotenv(dotenv_path=_env_path)
+from sqlalchemy import create_engine
+from sqlalchemy.orm import declarative_base, sessionmaker
+
+from app.core.config import get_env_settings
 
 logger = logging.getLogger(__name__)
 
-# Dedicated MySQL configuration for Aura Music Downloader
-DB_USER = os.getenv("DB_USER", "root")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "marte")
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = os.getenv("DB_PORT", "3306")
-DB_NAME = os.getenv("DB_NAME", "aura_music_db")
+env = get_env_settings()
 
-def ensure_mysql_database(user, password, host, port, db_name):
+DB_NAME = env.db_name
+DB_HOST = env.db_host
+DB_PORT = env.db_port
+DB_USER = env.db_user
+DB_PASSWORD = env.db_password
+MYSQL_URL = env.mysql_url
+SQLITE_URL = "sqlite:///./aura_database.db"
+
+# Append charset for MySQL connections (utf8mb4 covers emoji and full unicode).
+if MYSQL_URL.startswith("mysql"):
+    sep = "&" if "?" in MYSQL_URL else "?"
+    MYSQL_URL = f"{MYSQL_URL}{sep}charset=utf8mb4"
+
+DATABASE_URL = MYSQL_URL
+
+
+def ensure_mysql_database() -> None:
     try:
         import pymysql
         conn = pymysql.connect(
-            host=host,
-            user=user,
-            password=password,
-            port=int(port),
-            connect_timeout=5
+            host=DB_HOST,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            port=DB_PORT,
+            connect_timeout=5,
         )
         with conn.cursor() as cursor:
-            cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;")
+            cursor.execute(
+                f"CREATE DATABASE IF NOT EXISTS `{DB_NAME}` "
+                f"CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+            )
         conn.commit()
         conn.close()
-        logger.info(f"Ensured MySQL database '{db_name}' exists.")
+        logger.info(f"Ensured MySQL database '{DB_NAME}' exists.")
     except Exception as e:
-        logger.warning(f"Could not auto-create MySQL database '{db_name}': {e}")
+        logger.warning(f"Could not auto-create MySQL database '{DB_NAME}': {e}")
 
-# Ensure dedicated database exists on MySQL server
-ensure_mysql_database(DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME)
 
-MYSQL_URL = f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-SQLITE_URL = "sqlite:///./aura_database.db"
-
-# Determine DATABASE_URL
-DATABASE_URL = os.getenv("DATABASE_URL", MYSQL_URL)
+ensure_mysql_database()
 
 engine = None
-SessionLocal = None
 
 try:
-    logger.info(f"Attempting connection to primary database ({DATABASE_URL.split('@')[-1]})...")
+    logger.info(
+        f"Attempting connection to primary database "
+        f"({DATABASE_URL.split('@')[-1]})..."
+    )
     engine = create_engine(
         DATABASE_URL,
         pool_pre_ping=True,
-        pool_recycle=3600
+        pool_recycle=3600,
     )
     with engine.connect() as conn:
         logger.info(f"Successfully connected to MySQL database '{DB_NAME}'!")
 except Exception as e:
-    logger.warning(f"Could not connect to MySQL database ({e}). Falling back to local SQLite database.")
+    logger.warning(
+        f"Could not connect to MySQL database ({e}). "
+        f"Falling back to local SQLite database."
+    )
     DATABASE_URL = SQLITE_URL
     engine = create_engine(
         SQLITE_URL,
-        connect_args={"check_same_thread": False}
+        connect_args={"check_same_thread": False},
     )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
 
 def get_db():
     db = SessionLocal()

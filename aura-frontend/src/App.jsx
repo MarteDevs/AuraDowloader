@@ -1,231 +1,176 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { Header } from './components/Header';
-import { SearchBar } from './components/SearchBar';
-import { SongCard } from './components/SongCard';
-import { AlbumCard } from './components/AlbumCard';
 import { DownloadQueue } from './components/DownloadQueue';
 import { SettingsModal } from './components/SettingsModal';
+import { LoginScreen } from './components/LoginScreen';
+import { SearchPage } from './pages/SearchPage';
+import { LibraryPage } from './pages/LibraryPage';
+import { FavoritesPage } from './pages/FavoritesPage';
 import { api } from './services/api';
 import { DownloadWebSocket } from './services/websocket';
-import { Sparkles, Music, Disc, ShieldCheck, Download, Radio } from 'lucide-react';
+
+const QUEUE_STORAGE_KEY = 'aura.downloadQueue.v1';
+
+function loadQueueFromStorage() {
+  try {
+    const raw = localStorage.getItem(QUEUE_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
 
 export default function App() {
+  const [authRequired, setAuthRequired] = useState(null); // null=loading
+  const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(api.tokenStore.get()));
   const [isOnline, setIsOnline] = useState(false);
-  const [searchResults, setSearchResults] = useState([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [activeEngine, setActiveEngine] = useState('youtube');
-  const [searchType, setSearchType] = useState('tracks'); // 'tracks' or 'albums'
-  const [hasSearched, setHasSearched] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  
-  const [queue, setQueue] = useState([]);
+  const [queue, setQueue] = useState(() => loadQueueFromStorage());
   const [isQueueOpen, setIsQueueOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  // Health check (check once on mount, then every 30s)
+  // Persist queue across refreshes (only if authenticated, otherwise the
+  // data isn't even relevant to the user).
   useEffect(() => {
+    if (!isAuthenticated) return;
+    try {
+      localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(queue));
+    } catch {
+      // ignore quota errors
+    }
+  }, [queue, isAuthenticated]);
+
+  // Detect if the server requires auth.
+  useEffect(() => {
+    let cancelled = false;
+    api.authStatus()
+      .then((s) => {
+        if (cancelled) return;
+        setAuthRequired(Boolean(s.auth_required));
+        if (!s.auth_required) setIsAuthenticated(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAuthRequired(false);
+        setIsAuthenticated(true);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Listen for 401 events from the axios client.
+  useEffect(() => {
+    const onExpired = () => {
+      api.logout();
+      setIsAuthenticated(false);
+      toast.error('Tu sesión ha expirado. Vuelve a iniciar sesión.');
+    };
+    window.addEventListener('aura:auth-expired', onExpired);
+    return () => window.removeEventListener('aura:auth-expired', onExpired);
+  }, []);
+
+  // Health check every 30s.
+  useEffect(() => {
+    if (!isAuthenticated) return;
     const check = async () => {
       const online = await api.checkHealth();
-      setIsOnline(online);
+      setIsOnline((prev) => {
+        if (!prev && online) toast.success('Conectado al motor de Aura');
+        if (prev && !online) toast.error('Se perdió la conexión con el backend');
+        return online;
+      });
     };
     check();
     const interval = setInterval(check, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isAuthenticated]);
 
-  const fetchQueue = async () => {
+  const fetchQueue = useCallback(async () => {
     try {
       const data = await api.getQueue();
-      if (data && data.items) {
-        setQueue(data.items);
+      if (data && Array.isArray(data.items)) {
+        setQueue((prev) => {
+          const byId = new Map(data.items.map((i) => [i.id, i]));
+          for (const local of prev) {
+            if (!byId.has(local.id)) byId.set(local.id, local);
+          }
+          return Array.from(byId.values()).sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0));
+        });
       }
-    } catch {}
-  };
+    } catch {
+      // Network error — keep showing the cached queue.
+    }
+  }, []);
 
-  // Real-time WebSocket connection for download events
+  // Real-time WebSocket connection for download events.
   useEffect(() => {
+    if (!isAuthenticated) return undefined;
     fetchQueue();
 
     const wsClient = new DownloadWebSocket((event) => {
-      if (event && event.item) {
-        setQueue((prevQueue) => {
-          const index = prevQueue.findIndex((i) => i.id === event.item.id);
-          if (index !== -1) {
-            const updated = [...prevQueue];
-            updated[index] = event.item;
-            return updated;
-          } else {
-            return [event.item, ...prevQueue];
-          }
+      if (!event || !event.item) return;
+      setQueue((prevQueue) => {
+        const index = prevQueue.findIndex((i) => i.id === event.item.id);
+        if (index !== -1) {
+          const updated = [...prevQueue];
+          updated[index] = event.item;
+          return updated;
+        }
+        return [event.item, ...prevQueue];
+      });
+
+      if (event.type === 'download_completed') {
+        toast.success(`✓ ${event.item.title}`, { description: 'Descarga completada' });
+      } else if (event.type === 'download_error') {
+        toast.error(`✗ ${event.item.title}`, {
+          description: event.item.error_message || 'Error en la descarga',
         });
+      } else if (event.type === 'download_cancelled') {
+        toast.message(`Descarga cancelada: ${event.item.title}`);
       }
     });
 
     wsClient.connect();
     return () => wsClient.close();
-  }, []);
+  }, [fetchQueue, isAuthenticated]);
 
-  const handleSearch = async (query) => {
-    setIsSearching(true);
-    setHasSearched(true);
-    setSearchQuery(query);
-    try {
-      if (searchType === 'albums') {
-        const data = await api.searchAlbums(query, activeEngine);
-        setSearchResults((data && Array.isArray(data.results)) ? data.results : []);
-      } else {
-        const data = await api.search(query, activeEngine);
-        setSearchResults((data && Array.isArray(data.results)) ? data.results : []);
-      }
-    } catch (err) {
-      console.error('Search failed', err);
-      setSearchResults([]);
-    } finally {
-      setIsSearching(false);
-    }
-  };
+  if (authRequired === null) {
+    return (
+      <div className="min-h-screen bg-[#0b0f19] flex items-center justify-center text-slate-400 text-sm">
+        Conectando...
+      </div>
+    );
+  }
 
-  const handleDownload = async (track, quality) => {
-    try {
-      await api.startDownload(track, quality);
-      fetchQueue();
-      setIsQueueOpen(true);
-    } catch (err) {
-      alert('Error iniciando descarga: ' + err.message);
-    }
-  };
-
-  const handleDownloadAlbum = async (albumData, quality) => {
-    try {
-      await api.startAlbumDownload(albumData, quality);
-      fetchQueue();
-      setIsQueueOpen(true);
-    } catch (err) {
-      alert('Error iniciando descarga de álbum: ' + err.message);
-    }
-  };
+  if (authRequired && !isAuthenticated) {
+    return <LoginScreen onAuthenticated={() => setIsAuthenticated(true)} />;
+  }
 
   return (
     <div className="min-h-screen bg-[#0b0f19] text-slate-100 flex flex-col selection:bg-indigo-500 selection:text-white">
-      {/* Top Header */}
       <Header
         isOnline={isOnline}
-        queueCount={queue.filter((i) => i.status !== 'completed' && i.status !== 'error').length}
+        queueCount={queue.filter((i) => i.status !== 'completed' && i.status !== 'error' && i.status !== 'cancelled').length}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onToggleQueue={() => setIsQueueOpen(!isQueueOpen)}
       />
 
-      {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-8 space-y-10">
-        {/* Search Hero Section */}
-        <section className="text-center space-y-6 pt-4">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-semibold">
-            <Sparkles className="w-3.5 h-3.5" />
-            Descargas de Alta Fidelidad en Formato Lossless (FLAC & 320k)
-          </div>
-
-          <h2 className="text-4xl sm:text-5xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white via-slate-100 to-indigo-200">
-            Encuentra y Descarga tu Música en <span className="text-indigo-400">Máxima Calidad</span>
-          </h2>
-
-          {/* Search Bar */}
-          <SearchBar
-            onSearch={handleSearch}
-            isLoading={isSearching}
-            activeEngine={activeEngine}
-            setEngine={setActiveEngine}
-            searchType={searchType}
-            setSearchType={setSearchType}
-          />
-        </section>
-
-        {/* Results Section */}
-        {hasSearched && (
-          <section className="space-y-5 animate-fade-in pt-2">
-            <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-              <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2">
-                {searchType === 'albums' ? (
-                  <Disc className="w-5 h-5 text-indigo-400" />
-                ) : (
-                  <Music className="w-5 h-5 text-indigo-400" />
-                )}
-                Resultados para <span className="text-indigo-300">"{searchQuery}"</span>
-              </h3>
-              <span className="text-xs text-slate-400 font-medium">
-                {searchResults.length} {searchType === 'albums' ? 'álbumes encontrados' : 'canciones encontradas'}
-              </span>
-            </div>
-
-            {searchResults.length === 0 && !isSearching ? (
-              <div className="glass-panel rounded-2xl p-12 text-center space-y-3">
-                <Radio className="w-12 h-12 text-slate-600 mx-auto" />
-                <p className="text-base font-semibold text-slate-300">No se encontraron resultados para tu búsqueda.</p>
-                <p className="text-xs text-slate-500">Prueba cambiando las palabras clave o alternando entre el motor YouTube y Deezer.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-5">
-                {searchResults.map((item) => (
-                  searchType === 'albums' ? (
-                    <AlbumCard
-                      key={item.id}
-                      album={item}
-                      onDownloadAlbum={handleDownloadAlbum}
-                      onDownloadSingleTrack={handleDownload}
-                    />
-                  ) : (
-                    <SongCard
-                      key={item.id}
-                      track={item}
-                      onDownload={handleDownload}
-                    />
-                  )
-                ))}
-              </div>
-            )}
-          </section>
-        )}
-
-        {/* Landing Feature Cards if not searched yet */}
-        {!hasSearched && (
-          <section className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-6">
-            <div className="glass-panel p-6 rounded-2xl space-y-3 border border-slate-800/80">
-              <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
-                <Sparkles className="w-5 h-5" />
-              </div>
-              <h3 className="font-bold text-slate-100 text-base">Calidad FLAC Lossless</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Conecta tu Token ARL de Deezer para descargar archivos máster de estudio a 16-bit / 44.1kHz con compresión sin pérdida.
-              </p>
-            </div>
-
-            <div className="glass-panel p-6 rounded-2xl space-y-3 border border-slate-800/80">
-              <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
-                <ShieldCheck className="w-5 h-5" />
-              </div>
-              <h3 className="font-bold text-slate-100 text-base">Etiquetado Automático ID3</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Cada descarga incluye la carátula del álbum en alta definición, nombre del artista, título y metadatos limpios.
-              </p>
-            </div>
-
-            <div className="glass-panel p-6 rounded-2xl space-y-3 border border-slate-800/80">
-              <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
-                <Download className="w-5 h-5" />
-              </div>
-              <h3 className="font-bold text-slate-100 text-base">Descargas Simultáneas</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Procesamiento asíncrono que permite añadir múltiples archivos en cola con avance en tiempo real y velocidad medida.
-              </p>
-            </div>
-          </section>
-        )}
+        <Routes>
+          <Route path="/" element={<SearchPage onDownloaded={() => setIsQueueOpen(true)} />} />
+          <Route path="/library" element={<LibraryPage />} />
+          <Route path="/favorites" element={<FavoritesPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </main>
 
-      {/* Drawers & Modals */}
       <DownloadQueue
         isOpen={isQueueOpen}
         onClose={() => setIsQueueOpen(false)}
         queue={queue}
+        onChanged={fetchQueue}
       />
 
       <SettingsModal
@@ -235,3 +180,4 @@ export default function App() {
     </div>
   );
 }
+

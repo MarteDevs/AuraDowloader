@@ -1,6 +1,9 @@
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, Boolean, DateTime
+
+from sqlalchemy import Boolean, Column, DateTime, Integer, String
+
 from app.core.db import Base
+
 
 class TrackModel(Base):
     __tablename__ = "aura_tracks"

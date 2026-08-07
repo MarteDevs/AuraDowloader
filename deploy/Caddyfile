@@ -1,0 +1,56 @@
+# Aura Music Downloader — Caddy reverse proxy config
+#
+# Drop this at /etc/caddy/Caddyfile (or a separate file in /etc/caddy/sites-enabled/).
+# Requirements:
+#   - DNS A record pointing aura-downloader.duckdns.org to this VPS.
+#   - Ports 80 and 443 open.
+#   - Caddy installed (https://caddyserver.com).
+#
+# What this gives you:
+#   - Free Let's Encrypt TLS certificate, auto-renewed.
+#   - HSTS, modern TLS, OCSP stapling.
+#   - HTTP/2 + HTTP/3 (QUIC).
+#   - /api/* proxied to FastAPI on 127.0.0.1:9000.
+#   - / and everything else served from the Vite static build.
+
+aura-downloader.duckdns.org {
+    encode gzip zstd
+
+    # Reverse proxy to FastAPI.
+    reverse_proxy 127.0.0.1:9000 {
+        # Pass the original Host header so the backend can generate correct URLs.
+        header_up Host {host}
+        header_up X-Real-IP {remote}
+        header_up X-Forwarded-For {remote}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    # Cache static frontend assets aggressively.
+    @assets path /assets/*
+    header @assets Cache-Control "public, max-age=31536000, immutable"
+
+    # HSTS — uncomment after confirming HTTPS works.
+    header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+    # Security headers (defence in depth — backend also sets these).
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer"
+        # Don't override the backend's CSP.
+        # Content-Security-Policy
+    }
+
+    # Health check.
+    @health path /api/health
+    handle @health {
+        reverse_proxy 127.0.0.1:9000
+    }
+
+    log {
+        output file /var/log/caddy/aura.log {
+            roll_size 50MiB
+            roll_keep 5
+        }
+    }
+}

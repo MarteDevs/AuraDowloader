@@ -1,4 +1,3 @@
-import React from 'react';
 import { Sparkles, Music, ShieldCheck } from 'lucide-react';
 
 export function QualityBadge({ badge, engine, hasFlac }) {
@@ -27,3 +26,4 @@ export function QualityBadge({ badge, engine, hasFlac }) {
     </span>
   );
 }
+

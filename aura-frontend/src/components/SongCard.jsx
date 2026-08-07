@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
-import { Download, Clock, Music2, Check, Loader2 } from 'lucide-react';
+import { useState } from 'react';
+import { Download, Clock, Music2, Loader2 } from 'lucide-react';
 import { QualityBadge } from './QualityBadge';
 
-export function SongCard({ track, onDownload, defaultQuality }) {
+export function SongCard({ track, onDownload }) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [selectedQuality, setSelectedQuality] = useState(
     track.engine === 'deezer' && track.has_flac ? 'flac' : '320k'
@@ -95,3 +95,4 @@ export function SongCard({ track, onDownload, defaultQuality }) {
     </div>
   );
 }
+

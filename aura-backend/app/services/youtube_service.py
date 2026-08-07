@@ -1,15 +1,15 @@
+import logging
 import os
 import re
 import urllib.request
-import logging
 from pathlib import Path
-import yt_dlp
-from mutagen.easyid3 import EasyID3
-from mutagen.mp3 import MP3
-from mutagen.id3 import ID3, APIC, TIT2, TPE1, TALB
 
+import yt_dlp
+from mutagen.id3 import APIC, ID3, TALB, TIT2, TPE1
+from mutagen.mp3 import MP3
+
+from app.core.config import BASE_DIR, load_settings
 from app.core.ffmpeg_utils import get_ffmpeg_path
-from app.core.config import load_settings, BASE_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ def search_youtube(query: str, limit: int = 15) -> list[dict]:
                 uploader = item.get("uploader") or item.get("channel") or "Unknown Artist"
                 duration_sec = item.get("duration")
                 thumbnail = item.get("thumbnail") or f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
-                
+
                 results.append({
                     "id": video_id,
                     "title": title,
@@ -106,7 +106,7 @@ def search_youtube_albums(query: str, limit: int = 15) -> list[dict]:
                 uploader = item.get("uploader") or item.get("channel") or "Unknown Artist"
                 entry_count = item.get("playlist_count") or 1
                 thumbnail = item.get("thumbnail") or f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
-                
+
                 results.append({
                     "id": video_id,
                     "title": title,
@@ -125,7 +125,7 @@ def search_youtube_albums(query: str, limit: int = 15) -> list[dict]:
 def get_youtube_playlist_tracks(playlist_url_or_id: str) -> list[dict]:
     ffmpeg_bin = get_ffmpeg_path()
     url = playlist_url_or_id if playlist_url_or_id.startswith("http") else f"https://www.youtube.com/watch?v={playlist_url_or_id}"
-    
+
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
@@ -140,7 +140,7 @@ def get_youtube_playlist_tracks(playlist_url_or_id: str) -> list[dict]:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             entries = info.get("entries", [])
-            
+
             if entries:
                 for i, item in enumerate(entries, start=1):
                     if not item:
@@ -176,170 +176,152 @@ def get_youtube_playlist_tracks(playlist_url_or_id: str) -> list[dict]:
 
     return tracks
 
-def download_youtube_track(video_url: str, output_dir: Path, preferred_quality: str = "320k", progress_hook=None) -> dict:
-    import subprocess
-    import json as _json
-    import shutil
 
+def _build_progress_hook(shared_item, broadcast_fn):
+    """Return a yt_dlp progress hook that updates shared_item and broadcasts via broadcast_fn."""
+    def hook(d: dict) -> None:
+        status = d.get("status")
+        if status == "downloading":
+            total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
+            downloaded = d.get("downloaded_bytes", 0)
+            if total > 0:
+                shared_item["progress"] = round((downloaded / total) * 100, 2)
+
+            speed_bytes = d.get("speed") or 0
+            if speed_bytes > 1024 * 1024:
+                shared_item["speed"] = f"{speed_bytes / (1024 * 1024):.1f} MB/s"
+            elif speed_bytes > 1024:
+                shared_item["speed"] = f"{speed_bytes / 1024:.0f} KB/s"
+            else:
+                shared_item["speed"] = f"{speed_bytes:.0f} B/s"
+
+            eta_sec = d.get("eta")
+            if eta_sec is not None:
+                mins = int(eta_sec) // 60
+                secs = int(eta_sec) % 60
+                shared_item["eta"] = f"{mins:02d}:{secs:02d}"
+
+            broadcast_fn(shared_item)
+
+        elif status == "finished":
+            shared_item["progress"] = 95.0
+            shared_item["status"] = "processing"
+            shared_item["speed"] = "Etiquetando ID3..."
+            broadcast_fn(shared_item)
+    return hook
+
+
+def _tag_mp3(file_path: Path, title: str, artist: str, album: str, thumbnail_url: str | None) -> None:
+    """Embed ID3 tags and cover art into an MP3 file."""
+    try:
+        audio = MP3(file_path, ID3=ID3)
+        try:
+            audio.add_tags()
+        except Exception:
+            pass
+
+        audio.tags.add(TIT2(encoding=3, text=title))
+        audio.tags.add(TPE1(encoding=3, text=artist))
+        audio.tags.add(TALB(encoding=3, text=album))
+
+        if thumbnail_url:
+            try:
+                thumb_path = file_path.parent / f"temp_{file_path.stem}.jpg"
+                urllib.request.urlretrieve(thumbnail_url, thumb_path)
+                with open(thumb_path, "rb") as img_file:
+                    audio.tags.add(
+                        APIC(
+                            encoding=3,
+                            mime="image/jpeg",
+                            type=3,
+                            desc="Cover",
+                            data=img_file.read()
+                        )
+                    )
+                if thumb_path.exists():
+                    thumb_path.unlink()
+            except Exception as img_err:
+                logger.warning(f"Failed to embed thumbnail: {img_err}")
+
+        audio.save()
+    except Exception as tag_err:
+        logger.warning(f"Error tagging MP3 file: {tag_err}")
+
+
+def download_youtube_track(
+    video_url: str,
+    output_dir: Path,
+    preferred_quality: str = "320k",
+    progress_hook=None,
+) -> dict:
+    """Download audio from YouTube using yt_dlp's Python API with real-time progress hooks."""
     output_dir.mkdir(parents=True, exist_ok=True)
     ffmpeg_bin = get_ffmpeg_path()
-    
+
     preferred_ext = "mp3" if preferred_quality in ["320k", "standard"] else "flac"
     out_tmpl = str(output_dir / "%(id)s.%(ext)s")
-    
-    import sys
 
-    # Build CLI command using python -m yt_dlp (guaranteed to use venv's version)
-    cmd = [
-        sys.executable, "-m", "yt_dlp",
-        "--format", "bestaudio/best",
-        "--extract-audio",
-        "--audio-format", preferred_ext,
-        "--audio-quality", "320" if preferred_quality == "320k" else "192",
-        "--output", out_tmpl,
-        "--write-thumbnail",
-        "--retries", "10",
-        "--fragment-retries", "10",
-        "--js-runtimes", "node",
-        "--remote-components", "ejs:github",
-        "--no-warnings",
-        "--print-json",
-        "-v",  # Add verbose for debugging
-    ]
-
-    # Add cookies if available
-    settings = load_settings()
-    cookies_path = Path(settings.cookies_file)
-    if cookies_path.exists():
-        cmd.extend(["--cookies", str(cookies_path)])
-
-    # Add ffmpeg location
+    ydl_opts: dict = {
+        "format": "bestaudio/best",
+        "outtmpl": out_tmpl,
+        "extract_audio": True,
+        "audio_format": preferred_ext,
+        "audio_quality": "320" if preferred_quality == "320k" else "192",
+        "writethumbnail": True,
+        "retries": 10,
+        "fragment_retries": 10,
+        "noprogress": True,
+        "quiet": True,
+        "no_warnings": True,
+    }
+    _apply_yt_dlp_extras(ydl_opts)
     if ffmpeg_bin:
-        cmd.extend(["--ffmpeg-location", os.path.dirname(ffmpeg_bin)])
+        ydl_opts["ffmpeg_location"] = os.path.dirname(ffmpeg_bin)
 
-    # Add the video URL
-    cmd.append(video_url)
-
-    # Ensure node is in PATH for the subprocess and strip PM2/Node options
-    # PM2 often injects NODE_OPTIONS or other variables that cause node to crash (SIGABRT -6)
-    # when yt-dlp runs its JS challenge solver.
-    env = os.environ.copy()
-    env["PATH"] = "/usr/local/bin:/usr/bin:/bin:" + env.get("PATH", "")
-    for key in list(env.keys()):
-        if key.startswith("NODE_") or key.startswith("PM2_") or key == "npm_config_node_gyp":
-            del env[key]
-
-    logger.info(f"Running yt-dlp CLI: {' '.join(cmd[:8])}... {video_url}")
-
-    # Notify progress
+    # Notify progress at start
     if progress_hook:
         progress_hook({"status": "downloading", "_percent_str": "0%", "downloaded_bytes": 0, "total_bytes": 0})
 
+    info: dict | None = None
+    last_error: str | None = None
     max_attempts = 3
-    last_error = None
-    info = None
 
     for attempt in range(1, max_attempts + 1):
         try:
-            logger.info(f"Download attempt {attempt}/{max_attempts} for {video_url}")
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=300,  # 5 minute timeout
-                env=env
-            )
-            
-            # Write debug log
-            debug_log = output_dir.parent / "temp" / f"ytdlp_debug_{attempt}.log"
-            debug_log.parent.mkdir(exist_ok=True, parents=True)
-            with open(debug_log, "w", encoding="utf-8") as f:
-                f.write(f"--- STDOUT ---\n{result.stdout}\n--- STDERR ---\n{result.stderr}")
-            logger.info(f"Wrote verbose debug log to {debug_log}")
-
-            if result.returncode == 0:
-                # Parse JSON output from --print-json
-                stdout_lines = result.stdout.strip().split("\n")
-                for line in reversed(stdout_lines):
-                    try:
-                        info = _json.loads(line)
-                        break
-                    except _json.JSONDecodeError:
-                        continue
+            logger.info(f"yt-dlp download attempt {attempt}/{max_attempts} for {video_url}")
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(video_url, download=True)
+            if info:
                 break
-            else:
-                last_error = result.stderr.strip() or result.stdout.strip()
-                logger.warning(f"Download attempt {attempt}/{max_attempts} failed for {video_url}. See debug log.")
-                if attempt < max_attempts:
-                    import time
-                    time.sleep(2.0)
-        except subprocess.TimeoutExpired:
-            last_error = "Download timed out after 5 minutes"
-            logger.warning(f"Download attempt {attempt}/{max_attempts} timed out for {video_url}")
         except Exception as e:
             last_error = str(e)
-            logger.warning(f"Download attempt {attempt}/{max_attempts} failed for {video_url}: {e}")
+            logger.warning(f"yt-dlp attempt {attempt}/{max_attempts} failed: {e}")
             if attempt < max_attempts:
-                import time
-                time.sleep(2.0)
+                import time as _time
+                _time.sleep(2.0)
 
     if not info:
         raise RuntimeError(f"Download failed after {max_attempts} attempts: {last_error}")
 
     title = info.get("title", "downloaded_track")
     artist = info.get("uploader") or info.get("channel") or "Unknown Artist"
+    album = info.get("album") or "YouTube Release"
     thumbnail_url = info.get("thumbnail")
-    
-    clean_t = clean_filename(title)
     video_id = info.get("id", "unknown_id")
-    final_file = output_dir / f"{video_id}.{preferred_ext}"
+    clean_t = clean_filename(title)
 
+    final_file = output_dir / f"{video_id}.{preferred_ext}"
     if not final_file.exists():
         logger.warning(f"File not found at exact expected path {final_file}. Falling back to recent files.")
-        files = list(output_dir.glob(f"*.{preferred_ext}"))
-        if files:
-            final_file = max(files, key=os.path.getctime)
+        candidates = list(output_dir.glob(f"*.{preferred_ext}"))
+        if candidates:
+            final_file = max(candidates, key=os.path.getctime)
 
-    # Notify progress complete
     if progress_hook:
         progress_hook({"status": "finished", "filename": str(final_file)})
 
-    # Inject ID3 tags if MP3
     if final_file.exists() and preferred_ext == "mp3":
-        try:
-            audio = MP3(final_file, ID3=ID3)
-            try:
-                audio.add_tags()
-            except Exception:
-                pass
-
-            audio.tags.add(TIT2(encoding=3, text=title))
-            audio.tags.add(TPE1(encoding=3, text=artist))
-            audio.tags.add(TALB(encoding=3, text="YouTube Release"))
-
-            # Download thumbnail and embed as cover art
-            if thumbnail_url:
-                try:
-                    thumb_path = output_dir / f"temp_{info.get('id')}.jpg"
-                    urllib.request.urlretrieve(thumbnail_url, thumb_path)
-                    with open(thumb_path, "rb") as img_file:
-                        audio.tags.add(
-                            APIC(
-                                encoding=3,
-                                mime="image/jpeg",
-                                type=3,
-                                desc="Cover",
-                                data=img_file.read()
-                            )
-                        )
-                    if thumb_path.exists():
-                        thumb_path.unlink()
-                except Exception as img_err:
-                    logger.warning(f"Failed to embed thumbnail: {img_err}")
-
-            audio.save()
-        except Exception as tag_err:
-            logger.warning(f"Error tagging MP3 file: {tag_err}")
+        _tag_mp3(final_file, title, artist, album, thumbnail_url)
 
     return {
         "title": title,

@@ -1,6 +1,6 @@
+import logging
 import os
 import shutil
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -9,7 +9,7 @@ def get_ffmpeg_path() -> str | None:
     sys_ffmpeg = shutil.which("ffmpeg")
     if sys_ffmpeg:
         return sys_ffmpeg
-    
+
     # 2. Try static_ffmpeg package
     try:
         import static_ffmpeg
@@ -19,7 +19,7 @@ def get_ffmpeg_path() -> str | None:
             return sys_ffmpeg
     except Exception as e:
         logger.warning(f"Could not load static_ffmpeg: {e}")
-        
+
     # 3. Try imageio_ffmpeg
     try:
         import imageio_ffmpeg

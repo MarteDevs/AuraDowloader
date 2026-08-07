@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { Disc, Download, ListMusic, Loader2, X, Music } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { toast } from 'sonner';
+import { Disc, Download, ListMusic, Loader2, X } from 'lucide-react';
 import { api } from '../services/api';
 
 export function AlbumCard({ album, onDownloadAlbum, onDownloadSingleTrack }) {
@@ -10,6 +11,7 @@ export function AlbumCard({ album, onDownloadAlbum, onDownloadSingleTrack }) {
   const [showTracklist, setShowTracklist] = useState(false);
   const [tracks, setTracks] = useState([]);
   const [isLoadingTracks, setIsLoadingTracks] = useState(false);
+  const closeBtnRef = useRef(null);
 
   const handleDownloadFullAlbum = async () => {
     setIsDownloading(true);
@@ -22,17 +24,13 @@ export function AlbumCard({ album, onDownloadAlbum, onDownloadSingleTrack }) {
       }
 
       if (albumTracks.length === 0) {
-        alert('No se pudieron obtener las canciones de este álbum.');
+        toast.error('No se pudieron obtener las canciones de este álbum.');
         return;
       }
 
-      await onDownloadAlbum({
-        ...album,
-        tracks: albumTracks
-      }, selectedQuality);
-
+      await onDownloadAlbum({ ...album, tracks: albumTracks }, selectedQuality);
     } catch (err) {
-      alert('Error descargando el álbum: ' + err.message);
+      toast.error('Error descargando el álbum', { description: err.message });
     } finally {
       setIsDownloading(false);
     }
@@ -46,12 +44,27 @@ export function AlbumCard({ album, onDownloadAlbum, onDownloadSingleTrack }) {
         const data = await api.getAlbumTracks(album.id, album.engine);
         setTracks(data.tracks || []);
       } catch (err) {
-        console.error('Error fetching album tracks', err);
+        toast.error('Error al cargar las pistas', { description: err.message });
       } finally {
         setIsLoadingTracks(false);
       }
     }
   };
+
+  useEffect(() => {
+    if (showTracklist) {
+      setTimeout(() => closeBtnRef.current?.focus(), 50);
+    }
+  }, [showTracklist]);
+
+  useEffect(() => {
+    if (!showTracklist) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setShowTracklist(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [showTracklist]);
 
   return (
     <>
@@ -139,20 +152,29 @@ export function AlbumCard({ album, onDownloadAlbum, onDownloadSingleTrack }) {
 
       {/* Tracklist Modal */}
       {showTracklist && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-md animate-fade-in">
-          <div className="w-full max-w-xl glass-panel rounded-2xl border border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-md animate-fade-in"
+          role="presentation"
+          onClick={() => setShowTracklist(false)}
+        >
+          <div
+            className="w-full max-w-xl glass-panel rounded-2xl border border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
             {/* Header */}
             <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
               <div className="flex items-center gap-3">
-                <Disc className="w-6 h-6 text-indigo-400" />
+                <Disc className="w-6 h-6 text-indigo-400" aria-hidden="true" />
                 <div>
-                  <h3 className="font-bold text-slate-100 text-base">{album.title}</h3>
+                  <h3 id="tracklist-title" className="font-bold text-slate-100 text-base">{album.title}</h3>
                   <p className="text-xs text-slate-400">{album.artist} • {tracks.length} canciones</p>
                 </div>
               </div>
               <button
+                ref={closeBtnRef}
                 onClick={() => setShowTracklist(false)}
                 className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                aria-label="Cerrar lista de canciones"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -213,3 +235,4 @@ export function AlbumCard({ album, onDownloadAlbum, onDownloadSingleTrack }) {
     </>
   );
 }
+
