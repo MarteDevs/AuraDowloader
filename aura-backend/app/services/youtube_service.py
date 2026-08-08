@@ -17,14 +17,19 @@ logger = logging.getLogger(__name__)
 YT_DLP_CONF = BASE_DIR / "yt-dlp.conf"
 
 def _apply_yt_dlp_extras(ydl_opts: dict) -> dict:
-    """Apply cookies, config file, and extractor args to ydl_opts."""
+    """Apply cookies, config file, and extractor args to ydl_opts.
+
+    The `bgutil-ytdlp-pot-provider` plugin (installed as a Python package) is
+    auto-loaded by yt-dlp and provides the GVS PO Token required by `mweb`.
+    No extra server / env var is needed.
+    """
     settings = load_settings()
     cookies_path = Path(settings.cookies_file)
     if cookies_path.exists():
         ydl_opts["cookiefile"] = str(cookies_path)
     if YT_DLP_CONF.exists():
         ydl_opts["config_locations"] = [str(YT_DLP_CONF)]
-    ydl_opts["extractor_args"] = {"youtube": {"player_client": ["mweb", "ios"]}}
+    ydl_opts["extractor_args"] = {"youtube": {"player_client": ["mweb"]}}
     return ydl_opts
 
 def format_duration(seconds: int | float | None) -> str:
