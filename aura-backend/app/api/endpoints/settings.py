@@ -1,7 +1,11 @@
+import logging
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.core.config import AppSettings, load_settings, safe_alpath, save_settings
+from app.core.config import DOWNLOADS_DIR, AppSettings, load_settings, safe_alpath, save_settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -27,12 +31,27 @@ def get_app_settings():
 
 @router.post("/settings")
 def update_app_settings(settings: AppSettings):
-    # Reject download_dir pointing outside the allowed roots.
+    # Normalize download_dir: reject path-traversal silently by falling back to
+    # the default rather than 400-ing the user. Auto-create if missing.
     if settings.download_dir:
         try:
-            safe_alpath(settings.download_dir)
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e)) from e
+            candidate = safe_alpath(settings.download_dir)
+            candidate.mkdir(parents=True, exist_ok=True)
+        except (ValueError, OSError) as e:
+            logger.warning(
+                f"download_dir '{settings.download_dir}' unusable ({e}); "
+                f"falling back to default '{DOWNLOADS_DIR}'"
+            )
+            settings.download_dir = str(DOWNLOADS_DIR)
+            try:
+                DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+            except OSError as fallback_err:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Default download_dir '{DOWNLOADS_DIR}' unusable: {fallback_err}",
+                ) from fallback_err
+    else:
+        settings.download_dir = str(DOWNLOADS_DIR)
 
     updated = save_settings(settings)
     return {

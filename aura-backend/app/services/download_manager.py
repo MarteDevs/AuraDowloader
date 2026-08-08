@@ -3,6 +3,7 @@ import logging
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 from pydantic import BaseModel
 
@@ -216,15 +217,27 @@ class DownloadManager:
         self._broadcast_event("download_progress", item)
 
         settings = load_settings()
-        try:
-            out_dir = safe_alpath(settings.download_dir) if settings.download_dir else DOWNLOADS_DIR
-        except ValueError as e:
-            logger.error(f"Refusing to write to unsafe download_dir: {e}")
-            item.status = "error"
-            item.error_message = f"Invalid download_dir: {settings.download_dir}"
-            self._broadcast_event("download_error", item)
-            return
-        out_dir.mkdir(parents=True, exist_ok=True)
+        out_dir: Path | None = None
+        if settings.download_dir:
+            try:
+                candidate = safe_alpath(settings.download_dir)
+                candidate.mkdir(parents=True, exist_ok=True)
+                out_dir = candidate
+            except (ValueError, OSError) as e:
+                logger.warning(
+                    f"download_dir '{settings.download_dir}' unusable ({e}); "
+                    f"falling back to default '{DOWNLOADS_DIR}'"
+                )
+        if out_dir is None:
+            try:
+                out_dir = DOWNLOADS_DIR
+                out_dir.mkdir(parents=True, exist_ok=True)
+            except OSError as e:
+                logger.error(f"Default download_dir '{DOWNLOADS_DIR}' unusable: {e}")
+                item.status = "error"
+                item.error_message = f"Invalid download_dir: {settings.download_dir or DOWNLOADS_DIR}"
+                self._broadcast_event("download_error", item)
+                return
 
         # Shared dict so the worker thread can mutate progress without
         # touching the Pydantic model from inside a hook callback.
@@ -235,7 +248,7 @@ class DownloadManager:
             "status": item.status,
         }
 
-        def broadcast_from_hook() -> None:
+        def broadcast_from_hook(_shared: dict | None = None) -> None:
             # Honor cancellation mid-download.
             if self.is_cancelled(download_id):
                 raise _DownloadCancelled()

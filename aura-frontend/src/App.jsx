@@ -8,7 +8,7 @@ import { LoginScreen } from './components/LoginScreen';
 import { SearchPage } from './pages/SearchPage';
 import { LibraryPage } from './pages/LibraryPage';
 import { FavoritesPage } from './pages/FavoritesPage';
-import { api } from './services/api';
+import { api, tokenStore } from './services/api';
 import { DownloadWebSocket } from './services/websocket';
 
 const QUEUE_STORAGE_KEY = 'aura.downloadQueue.v1';
@@ -26,7 +26,7 @@ function loadQueueFromStorage() {
 
 export default function App() {
   const [authRequired, setAuthRequired] = useState(null); // null=loading
-  const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(api.tokenStore.get()));
+  const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(tokenStore.get()));
   const [isOnline, setIsOnline] = useState(false);
   const [queue, setQueue] = useState(() => loadQueueFromStorage());
   const [isQueueOpen, setIsQueueOpen] = useState(false);
