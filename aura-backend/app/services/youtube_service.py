@@ -21,7 +21,9 @@ def _apply_yt_dlp_extras(ydl_opts: dict) -> dict:
 
     The `bgutil-ytdlp-pot-provider` plugin (installed as a Python package) is
     auto-loaded by yt-dlp and provides the GVS PO Token required by `mweb`.
-    No extra server / env var is needed.
+    If the plugin fails to load or `mweb` exposes no formats, yt-dlp falls
+    back to `web_safari`, which provides HLS (m3u8) streams that do not
+    require a PO Token.
     """
     settings = load_settings()
     cookies_path = Path(settings.cookies_file)
@@ -29,8 +31,41 @@ def _apply_yt_dlp_extras(ydl_opts: dict) -> dict:
         ydl_opts["cookiefile"] = str(cookies_path)
     if YT_DLP_CONF.exists():
         ydl_opts["config_locations"] = [str(YT_DLP_CONF)]
-    ydl_opts["extractor_args"] = {"youtube": {"player_client": ["mweb"]}}
+    ydl_opts["extractor_args"] = {
+        "youtube": {"player_client": ["mweb", "web_safari"]}
+    }
     return ydl_opts
+
+
+def _log_yt_dlp_plugins() -> None:
+    """Force-load yt-dlp plugins (incl. bgutil-ytdlp-pot-provider) and log what
+    was discovered. Helps diagnose "Requested format is not available" errors
+    when the PO token plugin isn't providing GVS tokens to the mweb client.
+    """
+    try:
+        from yt_dlp.plugins import _update_and_reload_plugins
+        _update_and_reload_plugins()
+    except Exception as e:
+        logger.debug("Could not reload yt-dlp plugins: %s", e)
+    try:
+        import yt_dlp.plugins as _yplugins
+        names: list[str] = []
+        specs = getattr(_yplugins, "_plugin_specs", None) or {}
+        for spec in specs.values():
+            try:
+                names.append(type(spec).__name__)
+            except Exception:
+                pass
+        if names:
+            logger.info("yt-dlp plugins detected: %s", names)
+        else:
+            logger.warning(
+                "yt-dlp plugins detected: <none>. The bgutil-ytdlp-pot-provider "
+                "package may not be installed or its entry point is not being "
+                "discovered (check: pip show bgutil-ytdlp-pot-provider)."
+            )
+    except Exception as e:
+        logger.debug("Could not enumerate yt-dlp plugins: %s", e)
 
 def format_duration(seconds: int | float | None) -> str:
     if not seconds:
@@ -268,7 +303,8 @@ def download_youtube_track(
     out_tmpl = str(output_dir / "%(id)s.%(ext)s")
 
     ydl_opts: dict = {
-        "format": "bestaudio/best",
+        "format": "bestaudio[acodec!=none]/bestaudio/best",
+        "format_sort": ["ext:mp4:m4a", "size", "br", "asr"],
         "outtmpl": out_tmpl,
         "extract_audio": True,
         "audio_format": preferred_ext,
@@ -283,6 +319,7 @@ def download_youtube_track(
     _apply_yt_dlp_extras(ydl_opts)
     if ffmpeg_bin:
         ydl_opts["ffmpeg_location"] = os.path.dirname(ffmpeg_bin)
+    _log_yt_dlp_plugins()
 
     # Notify progress at start
     if progress_hook:
