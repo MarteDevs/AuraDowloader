@@ -24,15 +24,15 @@ android {
 
     buildTypes {
         debug {
-            buildConfigField("String", "BACKEND_BASE_URL", "\"http://10.0.2.2:9000/api/\"")
-            buildConfigField("String", "WS_BASE_URL", "\"ws://10.0.2.2:9000/ws/downloads\"")
+            buildConfigField("String", "BACKEND_BASE_URL", "\"https://aura-downloader.duckdns.org/api/\"")
+            buildConfigField("String", "WS_BASE_URL", "\"wss://aura-downloader.duckdns.org/ws/downloads\"")
         }
         release {
             optimization {
                 enable = false
             }
-            buildConfigField("String", "BACKEND_BASE_URL", "\"https://tu-vps:9000/api/\"")
-            buildConfigField("String", "WS_BASE_URL", "\"wss://tu-vps:9000/ws/downloads\"")
+            buildConfigField("String", "BACKEND_BASE_URL", "\"https://aura-downloader.duckdns.org/api/\"")
+            buildConfigField("String", "WS_BASE_URL", "\"wss://aura-downloader.duckdns.org/ws/downloads\"")
         }
     }
     compileOptions {
