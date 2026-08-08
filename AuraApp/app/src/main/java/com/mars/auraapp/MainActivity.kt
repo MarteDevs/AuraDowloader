@@ -1,5 +1,6 @@
 package com.mars.auraapp
 
+import android.content.pm.ActivityInfo
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -45,6 +46,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        window.colorMode = ActivityInfo.COLOR_MODE_DEFAULT
         setContent {
             AuraAppTheme {
                 AuthGate(
